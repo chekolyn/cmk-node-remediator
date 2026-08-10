@@ -5,16 +5,13 @@ IMAGE_TAG?=latest
 IMAGE_REPO=ghcr.io/crusoecloud/node-remediation
 
 build:
-	CGO_ENABLED=0 go build -mod=vendor -o $(BINARY_NAME) ./cmd/manager
+	CGO_ENABLED=0 go build -o $(BINARY_NAME) ./cmd/manager
 
 test:
-	go test -v -race -mod=vendor ./...
+	go test -v -race ./...
 
 lint:
-	go vet -mod=vendor ./...
-
-vendor:
-	go mod vendor
+	go vet ./...
 
 docker-build:
 	docker build -t $(IMAGE_REPO):$(IMAGE_TAG) .
