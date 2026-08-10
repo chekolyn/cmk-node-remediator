@@ -90,23 +90,23 @@ func (m *Manager) Run(ctx context.Context) error {
 				continue
 			}
 
-			days := time.Since(startTime).Hours() / 24.0
+			uptime := time.Since(startTime)
 
 			// Check cooldown — skip if remediated recently
 			if m.isInCooldown(nodeInfo.Node) {
-				log.Printf("skipping node %s: in cooldown (remediated within %d days)", nodeInfo.Name, m.deps.Config.CooldownDays)
+				log.Printf("skipping node %s: in cooldown (remediated within %v)", nodeInfo.Name, time.Duration(m.deps.Config.Cooldown))
 				continue
 			}
 
-			action := ClassifyUptime(days, m.deps.Config.CordonDays, m.deps.Config.ActionDays)
+			action := ClassifyUptime(uptime, time.Duration(m.deps.Config.CordonThreshold), time.Duration(m.deps.Config.ActionThreshold))
 
 			switch action {
 			case ActionNone:
 				m.handleMonitoredNode(ctx, nodeInfo)
 			case ActionCordon:
-				m.handleCordonNode(ctx, nodeInfo, days, &globalActive, &poolActive, globalTotal, poolTotal)
+				m.handleCordonNode(ctx, nodeInfo, uptime, &globalActive, &poolActive, globalTotal, poolTotal)
 			case ActionRemediate:
-				if err := m.handleRemediateNode(ctx, nodeInfo, days, &globalActive, &poolActive, globalTotal, poolTotal); err != nil {
+				if err := m.handleRemediateNode(ctx, nodeInfo, uptime, &globalActive, &poolActive, globalTotal, poolTotal); err != nil {
 					failedCount++
 				}
 			}
@@ -131,7 +131,7 @@ func (m *Manager) isInCooldown(node *corev1.Node) bool {
 	if err != nil {
 		return false
 	}
-	cooldownDuration := time.Duration(m.deps.Config.CooldownDays) * 24 * time.Hour
+	cooldownDuration := time.Duration(m.deps.Config.Cooldown)
 	return time.Since(t) < cooldownDuration
 }
 
@@ -146,8 +146,8 @@ func (m *Manager) handleMonitoredNode(ctx context.Context, nodeInfo discovery.No
 	}
 
 	if m.deps.Config.DryRun {
-		log.Printf("[dry-run] would uncordon node %s (uptime < %d days)",
-			nodeInfo.Name, m.deps.Config.CordonDays)
+			log.Printf("[dry-run] would uncordon node %s (uptime < %v)",
+			nodeInfo.Name, time.Duration(m.deps.Config.CordonThreshold))
 		return
 	}
 
@@ -165,7 +165,7 @@ func (m *Manager) handleMonitoredNode(ctx context.Context, nodeInfo discovery.No
 	m.deps.Recorder.Eventf(nodeInfo.Node, corev1.EventTypeNormal, "NodeUncordoned", "node uncordoned (uptime below threshold)")
 }
 
-func (m *Manager) handleCordonNode(ctx context.Context, nodeInfo discovery.NodeInfo, days float64, globalActive, poolActive *int, globalTotal, poolTotal int) {
+func (m *Manager) handleCordonNode(ctx context.Context, nodeInfo discovery.NodeInfo, uptime time.Duration, globalActive, poolActive *int, globalTotal, poolTotal int) {
 	if !m.deps.GuardChecker.CanCordon(*globalActive, *poolActive, globalTotal, poolTotal) {
 		log.Printf("skipping node %s: guardrail exceeded (global=%d/%d, pool=%d/%d)",
 			nodeInfo.Name, *globalActive, globalTotal, *poolActive, poolTotal)
@@ -173,11 +173,11 @@ func (m *Manager) handleCordonNode(ctx context.Context, nodeInfo discovery.NodeI
 	}
 
 	if m.deps.Config.DryRun {
-		log.Printf("[dry-run] would cordon node %s (uptime %.1f days)", nodeInfo.Name, days)
+		log.Printf("[dry-run] would cordon node %s (uptime %v)", nodeInfo.Name, uptime)
 		return
 	}
 
-	log.Printf("cordoning node %s (uptime %.1f days)", nodeInfo.Name, days)
+	log.Printf("cordoning node %s (uptime %v)", nodeInfo.Name, uptime)
 
 	m.deps.K8sClient.SetLabel(ctx, nodeInfo.Name, constants.LabelRemediationManaged, "true")
 
@@ -191,17 +191,17 @@ func (m *Manager) handleCordonNode(ctx context.Context, nodeInfo discovery.NodeI
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	m.deps.K8sClient.SetAnnotation(ctx, nodeInfo.Name, constants.AnnotationCordonedAt, now)
-	m.deps.K8sClient.SetAnnotation(ctx, nodeInfo.Name, constants.AnnotationCordonUptime, fmt.Sprintf("%.1fd", days))
+	m.deps.K8sClient.SetAnnotation(ctx, nodeInfo.Name, constants.AnnotationCordonUptime, fmt.Sprintf("%v", uptime))
 	m.deps.K8sClient.SetAnnotation(ctx, nodeInfo.Name, constants.AnnotationManagedBy, constants.ManagedByValue)
 	m.deps.K8sClient.SetAnnotation(ctx, nodeInfo.Name, constants.AnnotationLastAction, "cordon")
-	m.deps.Recorder.Eventf(nodeInfo.Node, corev1.EventTypeNormal, "NodeCordoned", "node cordoned at %.1f days uptime", days)
+	m.deps.Recorder.Eventf(nodeInfo.Node, corev1.EventTypeNormal, "NodeCordoned", "node cordoned at %v uptime", uptime)
 
 	// Only increment for newly cordoned nodes
 	*globalActive++
 	*poolActive++
 }
 
-func (m *Manager) handleRemediateNode(ctx context.Context, nodeInfo discovery.NodeInfo, days float64, globalActive, poolActive *int, globalTotal, poolTotal int) error {
+func (m *Manager) handleRemediateNode(ctx context.Context, nodeInfo discovery.NodeInfo, uptime time.Duration, globalActive, poolActive *int, globalTotal, poolTotal int) error {
 	if !m.deps.GuardChecker.CanCordon(*globalActive, *poolActive, globalTotal, poolTotal) {
 		log.Printf("skipping node %s: guardrail exceeded (global=%d/%d, pool=%d/%d)",
 			nodeInfo.Name, *globalActive, globalTotal, *poolActive, poolTotal)
@@ -209,13 +209,13 @@ func (m *Manager) handleRemediateNode(ctx context.Context, nodeInfo discovery.No
 	}
 
 	if m.deps.Config.DryRun {
-		log.Printf("[dry-run] would remediate node %s with action %s (uptime %.1f days)",
-			nodeInfo.Name, m.deps.Config.Action.Type, days)
+		log.Printf("[dry-run] would remediate node %s with action %s (uptime %v)",
+			nodeInfo.Name, m.deps.Config.Action.Type, uptime)
 		return nil
 	}
 
-	log.Printf("remediating node %s with action %s (uptime %.1f days)",
-		nodeInfo.Name, m.deps.Config.Action.Type, days)
+log.Printf("remediating node %s with action %s (uptime %v)",
+		nodeInfo.Name, m.deps.Config.Action.Type, uptime)
 
 	// Check cross-run retry limit via attempt annotation
 	attempt := getAttemptAnnotation(nodeInfo.Node)
@@ -305,7 +305,7 @@ func (m *Manager) handleRemediateNode(ctx context.Context, nodeInfo discovery.No
 	if isDeleteAction {
 		log.Printf("node %s: vm-delete completed, old node will be replaced by CMK", nodeInfo.Name)
 	} else {
-		if err := m.uncordonNode(ctx, nodeInfo, step.Type(), days); err != nil {
+		if err := m.uncordonNode(ctx, nodeInfo, step.Type(), uptime); err != nil {
 			// Uncordon failed — don't set action-completed-at, so cooldown
 			// won't skip this node on the next run
 			return err
@@ -322,7 +322,7 @@ func (m *Manager) handleRemediateNode(ctx context.Context, nodeInfo discovery.No
 	return nil
 }
 
-func (m *Manager) uncordonNode(ctx context.Context, nodeInfo discovery.NodeInfo, stepType string, days float64) error {
+func (m *Manager) uncordonNode(ctx context.Context, nodeInfo discovery.NodeInfo, stepType string, uptime time.Duration) error {
 	m.deps.K8sClient.SetLabel(ctx, nodeInfo.Name, constants.LabelRemediationPhase, string(constants.PhaseUncordoning))
 	if err := m.deps.K8sClient.Uncordon(ctx, nodeInfo.Name); err != nil {
 		log.Printf("ERROR: failed to uncordon node %s: %v", nodeInfo.Name, err)
@@ -336,7 +336,7 @@ func (m *Manager) uncordonNode(ctx context.Context, nodeInfo discovery.NodeInfo,
 	m.deps.K8sClient.SetAnnotation(ctx, nodeInfo.Name, constants.AnnotationAttempt, "0")
 
 	m.deps.Recorder.Eventf(nodeInfo.Node, corev1.EventTypeNormal, "NodeRemediated",
-		"node remediated with %s after %.1f days uptime", stepType, days)
+		"node remediated with %s after %v uptime", stepType, uptime)
 
 	log.Printf("node %s remediation complete (step: %s)", nodeInfo.Name, stepType)
 	return nil

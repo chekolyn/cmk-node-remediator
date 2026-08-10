@@ -2,10 +2,77 @@ package config
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
 )
+
+// Duration is a time.Duration that supports YAML unmarshaling with days (d),
+// hours (h), minutes (m), and seconds (s). Go's native time.Duration only
+// supports h, m, s, ms, us, ns — not days. This custom type adds "d" support.
+//
+// Examples: "55d", "60d", "7d", "30m", "1h", "1800s", "1h30m"
+type Duration time.Duration
+
+// UnmarshalYAML implements yaml.Unmarshaler — parses duration strings with day support.
+func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
+	var s string
+	if err := value.Decode(&s); err != nil {
+		return err
+	}
+	parsed, err := ParseDuration(s)
+	if err != nil {
+		return err
+	}
+	*d = Duration(parsed)
+	return nil
+}
+
+// ParseDuration parses a duration string with support for days (d),
+// hours (h), minutes (m), and seconds (s).
+// Examples: "55d", "1h30m", "90m", "3600s", "1d12h"
+func ParseDuration(s string) (time.Duration, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, fmt.Errorf("empty duration string")
+	}
+
+	// Replace "d" with "h" * 24 by expanding days into hours
+	// e.g., "55d" → "1320h", "1d12h" → "36h"
+	result := s
+	for {
+		idx := strings.IndexByte(result, 'd')
+		if idx == -1 {
+			break
+		}
+		// Find the number before 'd'
+		start := idx - 1
+		for start >= 0 && (result[start] >= '0' && result[start] <= '9') {
+			start--
+		}
+		start++ // move to first digit
+		if start >= idx {
+			return 0, fmt.Errorf("invalid duration %q: no number before 'd'", s)
+		}
+		daysStr := result[start:idx]
+		// Parse days and convert to hours
+		var days int
+		if _, err := fmt.Sscanf(daysStr, "%d", &days); err != nil {
+			return 0, fmt.Errorf("invalid duration %q: cannot parse days %q", s, daysStr)
+		}
+		hours := days * 24
+		replacement := fmt.Sprintf("%dh", hours)
+		result = result[:start] + replacement + result[idx+1:]
+	}
+
+	// Now parse with Go's native time.ParseDuration (supports h, m, s, ms, us, ns)
+	d, err := time.ParseDuration(result)
+	if err != nil {
+		return 0, fmt.Errorf("invalid duration %q: %w", s, err)
+	}
+	return d, nil
+}
 
 // ActionStepConfig holds a single step in a multi-step remediation action.
 type ActionStepConfig struct {
@@ -42,9 +109,9 @@ type NodeSelectorConfig struct {
 type Config struct {
 	Schedule                string             `yaml:"schedule"`
 	VMInstanceTypeFilter    string             `yaml:"vmInstanceTypeFilter,omitempty"`
-	CordonDays              int                `yaml:"cordonDays"`
-	ActionDays              int                `yaml:"actionDays"`
-	CooldownDays            int                `yaml:"cooldownDays"`
+	CordonThreshold         Duration           `yaml:"cordonThreshold"`
+	ActionThreshold         Duration           `yaml:"actionThreshold"`
+	Cooldown                Duration           `yaml:"cooldown"`
 	Action                  ActionConfig       `yaml:"action"`
 	Guardrails              GuardrailsConfig   `yaml:"guardrails"`
 	DrainTimeout            time.Duration      `yaml:"drainTimeout"`
@@ -77,9 +144,9 @@ func defaultConfig() *Config {
 	return &Config{
 		Schedule:             "0 0 * * *",
 		VMInstanceTypeFilter: "b200.*",
-		CordonDays:           55,
-		ActionDays:           60,
-		CooldownDays:         7,
+		CordonThreshold:      Duration(55 * 24 * time.Hour), // 55 days
+		ActionThreshold:      Duration(60 * 24 * time.Hour), // 60 days
+		Cooldown:             Duration(7 * 24 * time.Hour),   // 7 days
 		Action: ActionConfig{
 			Type:       "vm-reset",
 			Timeout:    30 * time.Minute,
@@ -96,8 +163,14 @@ func defaultConfig() *Config {
 }
 
 func (c *Config) Validate() error {
-	if c.CordonDays >= c.ActionDays {
-		return fmt.Errorf("cordonDays (%d) must be less than actionDays (%d)", c.CordonDays, c.ActionDays)
+	if c.CordonThreshold >= c.ActionThreshold {
+		return fmt.Errorf("cordonThreshold (%v) must be less than actionThreshold (%v)", c.CordonThreshold, c.ActionThreshold)
+	}
+	if c.CordonThreshold <= 0 {
+		return fmt.Errorf("cordonThreshold must be positive")
+	}
+	if c.Cooldown < 0 {
+		return fmt.Errorf("cooldown must be non-negative")
 	}
 	if c.CrusoeAPISecret == "" {
 		return fmt.Errorf("crusoeApiSecret must be set")

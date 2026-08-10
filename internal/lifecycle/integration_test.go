@@ -42,8 +42,8 @@ func TestIntegrationFullRemediationWorkflow(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		CordonDays:             55,
-		ActionDays:             60,
+		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
+		ActionThreshold:      config.Duration(60 * 24 * time.Hour),
 		DryRun:                 false,
 		VMInstanceTypeFilter:   "b200.*",
 		Action:                 config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
@@ -108,8 +108,8 @@ func TestIntegrationDryRunNoChanges(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		CordonDays:           55,
-		ActionDays:           60,
+		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
+		ActionThreshold:      config.Duration(60 * 24 * time.Hour),
 		DryRun:               true,
 		VMInstanceTypeFilter: "b200.*",
 		Action:               config.ActionConfig{Type: "vm-reset", Timeout: 30 * time.Minute, MaxRetries: 3},
@@ -173,9 +173,9 @@ func TestIntegrationCooldownSkipsRemediation(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		CordonDays:           55,
-		ActionDays:           60,
-		CooldownDays:         7,
+		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
+		ActionThreshold:      config.Duration(60 * 24 * time.Hour),
+		Cooldown:             config.Duration(7 * 24 * time.Hour),
 		DryRun:               false,
 		VMInstanceTypeFilter: "b200.*",
 		Action:               config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},

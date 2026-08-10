@@ -1,20 +1,25 @@
 package lifecycle
 
+import (
+	"time"
+)
+
 // ActionTier classifies what action to take based on uptime.
 type ActionTier int
 
 const (
-	ActionNone      ActionTier = iota // < cordonDays
-	ActionCordon                      // cordonDays <= days < actionDays
-	ActionRemediate                    // >= actionDays
+	ActionNone      ActionTier = iota // < cordonThreshold
+	ActionCordon                      // cordonThreshold <= uptime < actionThreshold
+	ActionRemediate                    // >= actionThreshold
 )
 
-// ClassifyUptime determines the action tier for a node based on its uptime in days.
-func ClassifyUptime(days float64, cordonDays, actionDays int) ActionTier {
-	if days >= float64(actionDays) {
+// ClassifyUptime determines the action tier for a node based on its uptime.
+// All thresholds are time.Duration — supports days, hours, or minutes.
+func ClassifyUptime(uptime time.Duration, cordonThreshold, actionThreshold time.Duration) ActionTier {
+	if uptime >= actionThreshold {
 		return ActionRemediate
 	}
-	if days >= float64(cordonDays) {
+	if uptime >= cordonThreshold {
 		return ActionCordon
 	}
 	return ActionNone

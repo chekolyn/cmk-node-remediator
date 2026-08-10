@@ -21,9 +21,9 @@ nodeSelector:
 
 vmInstanceTypeFilter: "c1a.*"
 
-cordonDays: 1
-actionDays: 2
-cooldownDays: 1
+cordonThreshold: 30m
+actionThreshold: 1h
+cooldown: 15m
 
 action:
   type: noop  # noop — cordon/drain/uncordon but no VM action

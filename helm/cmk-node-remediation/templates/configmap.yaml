@@ -9,9 +9,9 @@ data:
   config.yaml: |
     schedule: "{{ .Values.schedule }}"
     vmInstanceTypeFilter: "{{ .Values.vmInstanceTypeFilter }}"
-    cordonDays: {{ .Values.cordonDays }}
-    actionDays: {{ .Values.actionDays }}
-    cooldownDays: {{ .Values.cooldownDays }}
+    cordonThreshold: "{{ .Values.cordonThreshold }}"
+    actionThreshold: "{{ .Values.actionThreshold }}"
+    cooldown: "{{ .Values.cooldown }}"
     action:
       {{- if .Values.action.type }}
       type: "{{ .Values.action.type }}"

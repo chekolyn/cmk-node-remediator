@@ -50,7 +50,7 @@ func main() {
 	}
 
 	log.Printf("config loaded: cordonDays=%d, actionDays=%d, action=%s, dryRun=%v",
-		cfg.CordonDays, cfg.ActionDays, cfg.Action.Type, cfg.DryRun)
+		cfg.CordonThreshold, cfg.ActionThreshold, cfg.Action.Type, cfg.DryRun)
 
 	// 2. Load Crusoe API credentials from mounted Secret
 	apiKey := os.Getenv("CRUSOE_API_KEY")

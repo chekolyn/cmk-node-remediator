@@ -29,9 +29,9 @@ nodeSelector:
 vmInstanceTypeFilter: "c1a.*"
 
 # Lower thresholds for testing (nodes are only 2-3 days old)
-cordonDays: 1
-actionDays: 2
-cooldownDays: 1
+cordonThreshold: 30m
+actionThreshold: 1h
+cooldown: 15m
 
 action:
   type: noop  # start with noop — no real VM actions

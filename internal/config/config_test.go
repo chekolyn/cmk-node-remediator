@@ -6,11 +6,12 @@ import (
 )
 
 func TestLoadConfigFromYAML(t *testing.T) {
-	yamlData := []byte(`schedule: "0 0 * * *"
+	yamlData := []byte(`
+schedule: "0 0 * * *"
 vmInstanceTypeFilter: "b200.*"
-cordonDays: 55
-actionDays: 60
-cooldownDays: 7
+cordonThreshold: 55d
+actionThreshold: 60d
+cooldown: 7d
 action:
   type: vm-reset
   timeout: 30m
@@ -33,14 +34,14 @@ nodeSelector:
 		t.Fatalf("LoadFromYAML failed: %v", err)
 	}
 
-	if cfg.CordonDays != 55 {
-		t.Errorf("CordonDays = %d, want 55", cfg.CordonDays)
+	if cfg.CordonThreshold != Duration(55*24*time.Hour) {
+		t.Errorf("CordonThreshold = %v, want 55d", cfg.CordonThreshold)
 	}
-	if cfg.ActionDays != 60 {
-		t.Errorf("ActionDays = %d, want 60", cfg.ActionDays)
+	if cfg.ActionThreshold != Duration(60*24*time.Hour) {
+		t.Errorf("ActionThreshold = %v, want 60d", cfg.ActionThreshold)
 	}
-	if cfg.CooldownDays != 7 {
-		t.Errorf("CooldownDays = %d, want 7", cfg.CooldownDays)
+	if cfg.Cooldown != Duration(7*24*time.Hour) {
+		t.Errorf("Cooldown = %v, want 7d", cfg.Cooldown)
 	}
 	if cfg.Action.Type != "vm-reset" {
 		t.Errorf("Action.Type = %q, want %q", cfg.Action.Type, "vm-reset")
@@ -62,9 +63,87 @@ nodeSelector:
 	}
 }
 
+func TestLoadConfigHoursAndMinutes(t *testing.T) {
+	// Test that hours and minutes work as thresholds
+	yamlData := []byte(`
+cordonThreshold: 30m
+actionThreshold: 1h
+cooldown: 15m
+action:
+  type: noop
+  timeout: 5m
+  maxRetries: 2
+crusoeApiSecret: secret
+crusoeProjectId: proj-1
+`)
+
+	cfg, err := LoadFromYAML(yamlData)
+	if err != nil {
+		t.Fatalf("LoadFromYAML failed: %v", err)
+	}
+
+	if cfg.CordonThreshold != Duration(30*time.Minute) {
+		t.Errorf("CordonThreshold = %v, want 30m", cfg.CordonThreshold)
+	}
+	if cfg.ActionThreshold != Duration(1*time.Hour) {
+		t.Errorf("ActionThreshold = %v, want 1h", cfg.ActionThreshold)
+	}
+	if cfg.Cooldown != Duration(15*time.Minute) {
+		t.Errorf("Cooldown = %v, want 15m", cfg.Cooldown)
+	}
+}
+
+func TestLoadConfigMixedUnits(t *testing.T) {
+	// Test that 1h can be expressed as 60m — they should be equal
+	yamlData1 := []byte(`
+cordonThreshold: 1h
+actionThreshold: 2h
+cooldown: 30m
+action:
+  type: noop
+  timeout: 5m
+  maxRetries: 2
+crusoeApiSecret: secret
+crusoeProjectId: proj-1
+`)
+
+	yamlData2 := []byte(`
+cordonThreshold: 60m
+actionThreshold: 120m
+cooldown: 1800s
+action:
+  type: noop
+  timeout: 5m
+  maxRetries: 2
+crusoeApiSecret: secret
+crusoeProjectId: proj-1
+`)
+
+	cfg1, err := LoadFromYAML(yamlData1)
+	if err != nil {
+		t.Fatalf("LoadFromYAML (1h) failed: %v", err)
+	}
+
+	cfg2, err := LoadFromYAML(yamlData2)
+	if err != nil {
+		t.Fatalf("LoadFromYAML (60m) failed: %v", err)
+	}
+
+	if cfg1.CordonThreshold != cfg2.CordonThreshold {
+		t.Errorf("1h = %v but 60m = %v — should be equal", cfg1.CordonThreshold, cfg2.CordonThreshold)
+	}
+	if cfg1.ActionThreshold != cfg2.ActionThreshold {
+		t.Errorf("2h = %v but 120m = %v — should be equal", cfg1.ActionThreshold, cfg2.ActionThreshold)
+	}
+	if cfg1.Cooldown != cfg2.Cooldown {
+		t.Errorf("30m = %v but 1800s = %v — should be equal", cfg1.Cooldown, cfg2.Cooldown)
+	}
+}
+
 func TestLoadConfigMultiStepAction(t *testing.T) {
-	yamlData := []byte(`cordonDays: 55
-actionDays: 60
+	yamlData := []byte(`
+cordonThreshold: 55d
+actionThreshold: 60d
 action:
   maxRetries: 3
   steps:
@@ -105,14 +184,14 @@ func TestLoadConfigDefaults(t *testing.T) {
 	if cfg.Schedule != "0 0 * * *" {
 		t.Errorf("default Schedule = %q, want %q", cfg.Schedule, "0 0 * * *")
 	}
-	if cfg.CordonDays != 55 {
-		t.Errorf("default CordonDays = %d, want 55", cfg.CordonDays)
+	if cfg.CordonThreshold != Duration(55*24*time.Hour) {
+		t.Errorf("default CordonThreshold = %v, want 55d", cfg.CordonThreshold)
 	}
-	if cfg.ActionDays != 60 {
-		t.Errorf("default ActionDays = %d, want 60", cfg.ActionDays)
+	if cfg.ActionThreshold != Duration(60*24*time.Hour) {
+		t.Errorf("default ActionThreshold = %v, want 60d", cfg.ActionThreshold)
 	}
-	if cfg.CooldownDays != 7 {
-		t.Errorf("default CooldownDays = %d, want 7", cfg.CooldownDays)
+	if cfg.Cooldown != Duration(7*24*time.Hour) {
+		t.Errorf("default Cooldown = %v, want 7d", cfg.Cooldown)
 	}
 	if cfg.Action.Type != "vm-reset" {
 		t.Errorf("default Action.Type = %q, want %q", cfg.Action.Type, "vm-reset")
@@ -131,13 +210,20 @@ func TestValidateConfig(t *testing.T) {
 		{
 			name: "valid single action",
 			cfg: Config{
-				CordonDays: 55, ActionDays: 60, CooldownDays: 7,
-				Action: ActionConfig{
-					Type:       "vm-reset",
-					Timeout:    30 * time.Minute,
-					MaxRetries: 3,
-				},
-				Guardrails: GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+				CordonThreshold: Duration(55 * 24 * time.Hour), ActionThreshold: Duration(60 * 24 * time.Hour), Cooldown: Duration(7 * 24 * time.Hour),
+				Action:          ActionConfig{Type: "vm-reset", Timeout: 30 * time.Minute, MaxRetries: 3},
+				Guardrails:      GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+				DrainTimeout:    10 * time.Minute,
+				CrusoeAPISecret: "secret", CrusoeProjectID: "proj-1",
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid with hours",
+			cfg: Config{
+				CordonThreshold: Duration(30 * time.Minute), ActionThreshold: Duration(1 * time.Hour), Cooldown: Duration(15 * time.Minute),
+				Action:          ActionConfig{Type: "noop", Timeout: 5 * time.Minute, MaxRetries: 2},
+				Guardrails:      GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
 				DrainTimeout:    10 * time.Minute,
 				CrusoeAPISecret: "secret", CrusoeProjectID: "proj-1",
 			},
@@ -146,23 +232,23 @@ func TestValidateConfig(t *testing.T) {
 		{
 			name: "valid multi-step",
 			cfg: Config{
-				CordonDays: 55, ActionDays: 60, CooldownDays: 7,
+				CordonThreshold: Duration(55 * 24 * time.Hour), ActionThreshold: Duration(60 * 24 * time.Hour), Cooldown: Duration(7 * 24 * time.Hour),
 				Action: ActionConfig{MaxRetries: 3, Steps: []ActionStepConfig{
 					{Type: "vm-stop", Timeout: 5 * time.Minute},
 					{Type: "vm-delete", Timeout: 30 * time.Minute},
 				}},
-				Guardrails: GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+				Guardrails:      GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
 				DrainTimeout:    10 * time.Minute,
 				CrusoeAPISecret: "secret", CrusoeProjectID: "proj-1",
 			},
 			wantErr: false,
 		},
 		{
-			name: "cordonDays >= actionDays",
+			name: "cordon >= action",
 			cfg: Config{
-				CordonDays: 60, ActionDays: 55, CooldownDays: 7,
-				Action: ActionConfig{Type: "vm-reset", Timeout: 30 * time.Minute, MaxRetries: 3},
-				Guardrails: GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+				CordonThreshold: Duration(60 * 24 * time.Hour), ActionThreshold: Duration(55 * 24 * time.Hour), Cooldown: Duration(7 * 24 * time.Hour),
+				Action:          ActionConfig{Type: "vm-reset", Timeout: 30 * time.Minute, MaxRetries: 3},
+				Guardrails:      GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
 				DrainTimeout:    10 * time.Minute,
 				CrusoeAPISecret: "secret", CrusoeProjectID: "proj-1",
 			},
@@ -171,11 +257,11 @@ func TestValidateConfig(t *testing.T) {
 		{
 			name: "both type and steps",
 			cfg: Config{
-				CordonDays: 55, ActionDays: 60, CooldownDays: 7,
+				CordonThreshold: Duration(55 * 24 * time.Hour), ActionThreshold: Duration(60 * 24 * time.Hour), Cooldown: Duration(7 * 24 * time.Hour),
 				Action: ActionConfig{Type: "vm-reset", MaxRetries: 3, Steps: []ActionStepConfig{
 					{Type: "vm-stop", Timeout: 5 * time.Minute},
 				}},
-				Guardrails: GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+				Guardrails:      GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
 				DrainTimeout:    10 * time.Minute,
 				CrusoeAPISecret: "secret", CrusoeProjectID: "proj-1",
 			},
@@ -184,9 +270,9 @@ func TestValidateConfig(t *testing.T) {
 		{
 			name: "invalid action type",
 			cfg: Config{
-				CordonDays: 55, ActionDays: 60, CooldownDays: 7,
-				Action: ActionConfig{Type: "invalid", Timeout: 30 * time.Minute, MaxRetries: 3},
-				Guardrails: GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+				CordonThreshold: Duration(55 * 24 * time.Hour), ActionThreshold: Duration(60 * 24 * time.Hour), Cooldown: Duration(7 * 24 * time.Hour),
+				Action:          ActionConfig{Type: "invalid", Timeout: 30 * time.Minute, MaxRetries: 3},
+				Guardrails:      GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
 				DrainTimeout:    10 * time.Minute,
 				CrusoeAPISecret: "secret", CrusoeProjectID: "proj-1",
 			},
@@ -195,10 +281,10 @@ func TestValidateConfig(t *testing.T) {
 		{
 			name: "missing crusoeApiSecret",
 			cfg: Config{
-				CordonDays: 55, ActionDays: 60, CooldownDays: 7,
-				Action: ActionConfig{Type: "vm-reset", Timeout: 30 * time.Minute, MaxRetries: 3},
-				Guardrails: GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
-				DrainTimeout:    10 * time.Minute,
+				CordonThreshold: Duration(55 * 24 * time.Hour), ActionThreshold: Duration(60 * 24 * time.Hour), Cooldown: Duration(7 * 24 * time.Hour),
+				Action:       ActionConfig{Type: "vm-reset", Timeout: 30 * time.Minute, MaxRetries: 3},
+				Guardrails:   GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+				DrainTimeout: 10 * time.Minute,
 				CrusoeProjectID: "proj-1",
 			},
 			wantErr: true,

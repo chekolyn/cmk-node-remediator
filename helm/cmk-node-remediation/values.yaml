@@ -10,9 +10,9 @@ nodeSelector:
 
 vmInstanceTypeFilter: "b200.*"
 
-cordonDays: 55
-actionDays: 60
-cooldownDays: 7
+cordonThreshold: 55d
+actionThreshold: 60d
+cooldown: 7d
 
 action:
   type: vm-reset          # vm-reset | vm-stop | vm-start | vm-delete | noop

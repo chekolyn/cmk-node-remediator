@@ -2,31 +2,39 @@ package lifecycle
 
 import (
 	"testing"
+	"time"
 
 	"cmk-node-remediation/internal/constants"
 )
 
 func TestClassifyUptime(t *testing.T) {
 	tests := []struct {
-		name       string
-		days       float64
-		cordonDays int
-		actionDays int
-		want       ActionTier
+		name            string
+		uptime          time.Duration
+		cordonThreshold time.Duration
+		actionThreshold time.Duration
+		want            ActionTier
 	}{
-		{"below cordon", 40.0, 55, 60, ActionNone},
-		{"at cordon", 55.0, 55, 60, ActionCordon},
-		{"between", 57.5, 55, 60, ActionCordon},
-		{"at action", 60.0, 55, 60, ActionRemediate},
-		{"above action", 65.0, 55, 60, ActionRemediate},
+		{"below cordon", 40 * 24 * time.Hour, 55 * 24 * time.Hour, 60 * 24 * time.Hour, ActionNone},
+		{"at cordon", 55 * 24 * time.Hour, 55 * 24 * time.Hour, 60 * 24 * time.Hour, ActionCordon},
+		{"between", 57 * 24 * time.Hour, 55 * 24 * time.Hour, 60 * 24 * time.Hour, ActionCordon},
+		{"at action", 60 * 24 * time.Hour, 55 * 24 * time.Hour, 60 * 24 * time.Hour, ActionRemediate},
+		{"above action", 65 * 24 * time.Hour, 55 * 24 * time.Hour, 60 * 24 * time.Hour, ActionRemediate},
+		// Hours and minutes
+		{"below cordon (minutes)", 20 * time.Minute, 30 * time.Minute, 60 * time.Minute, ActionNone},
+		{"at cordon (minutes)", 30 * time.Minute, 30 * time.Minute, 60 * time.Minute, ActionCordon},
+		{"at action (minutes)", 60 * time.Minute, 30 * time.Minute, 60 * time.Minute, ActionRemediate},
+		// Mixed units: 1h = 60m
+		{"1h equals 60m for cordon", 60 * time.Minute, 60 * time.Minute, 2 * time.Hour, ActionCordon},
+		{"1h equals 60m for action", 60 * time.Minute, 30 * time.Minute, 60 * time.Minute, ActionRemediate},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := ClassifyUptime(tt.days, tt.cordonDays, tt.actionDays)
+			got := ClassifyUptime(tt.uptime, tt.cordonThreshold, tt.actionThreshold)
 			if got != tt.want {
-				t.Errorf("ClassifyUptime(%.1f, %d, %d) = %v, want %v",
-					tt.days, tt.cordonDays, tt.actionDays, got, tt.want)
+				t.Errorf("ClassifyUptime(%v, %v, %v) = %v, want %v",
+					tt.uptime, tt.cordonThreshold, tt.actionThreshold, got, tt.want)
 			}
 		})
 	}
