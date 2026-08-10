@@ -2,6 +2,7 @@ package actions
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -194,4 +195,41 @@ func TestCreateFromConfigSingleStep(t *testing.T) {
 	if step.Type() != "noop" {
 		t.Errorf("step type = %q, want noop", step.Type())
 	}
+}
+
+// TDD Test: Steps composite with failing first step → remaining steps NOT run
+func TestStepsFailingFirstStepStopsRemaining(t *testing.T) {
+	callCount := 0
+	failingStep := &countingStep{name: "failing", shouldFail: true, callCount: &callCount}
+	secondStep := &countingStep{name: "second", shouldFail: false, callCount: &callCount}
+
+	steps := &Steps{
+		steps: []Step{failingStep, secondStep},
+	}
+
+	err := steps.Run(context.Background(), NodeInfo{Name: "node-1"}, nil)
+	if err == nil {
+		t.Fatal("Steps.Run should fail when first step fails")
+	}
+
+	// Only first step should have been called
+	if callCount != 1 {
+		t.Errorf("expected 1 step call, got %d (second step should NOT run after first fails)", callCount)
+	}
+}
+
+// countingStep tracks how many times Run is called.
+type countingStep struct {
+	name       string
+	shouldFail bool
+	callCount  *int
+}
+
+func (s *countingStep) Type() string { return s.name }
+func (s *countingStep) Run(ctx context.Context, node NodeInfo, params map[string]string) error {
+	*s.callCount++
+	if s.shouldFail {
+		return fmt.Errorf("step %s intentionally failed", s.name)
+	}
+	return nil
 }

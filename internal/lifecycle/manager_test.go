@@ -671,3 +671,377 @@ func TestVMDeleteDoesNotUncordon(t *testing.T) {
 		t.Error("action-completed-at should be set after vm-delete")
 	}
 }
+
+// --- TDD: Additional edge case tests ---
+
+// TDD Test 8: Node with no instance.id label → should be skipped, not crash
+func TestNodeWithNoInstanceIDLabelSkipped(t *testing.T) {
+	clientset := fake.NewSimpleClientset(
+		// Node with all labels except instance.id
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-no-id",
+				Labels: map[string]string{
+					constants.LabelNodepoolID:   "pool-a",
+					constants.LabelProjectID:     "proj-1",
+					constants.LabelInstanceType:  "b200-180gb-sxm-ib.8x",
+					// Missing: constants.LabelInstanceID
+				},
+			},
+			Spec: corev1.NodeSpec{Unschedulable: false},
+		},
+		// Normal node for comparison
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-normal",
+				Labels: map[string]string{
+					constants.LabelNodepoolID:   "pool-a",
+					constants.LabelInstanceID:   "vm-normal",
+					constants.LabelProjectID:     "proj-1",
+					constants.LabelInstanceType:  "b200-180gb-sxm-ib.8x",
+				},
+			},
+			Spec: corev1.NodeSpec{Unschedulable: false},
+		},
+	)
+
+	k8sClient := k8s.NewClient(clientset, nil)
+	cfg := &config.Config{
+		CordonDays:             55,
+		ActionDays:             60,
+		DryRun:                 false,
+		VMInstanceTypeFilter:   "b200.*",
+		Action:                 config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:             config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+		DrainTimeout:           1 * time.Second,
+		ForceDrainAfterTimeout: true,
+		CrusoeAPISecret:        "test-secret",
+		CrusoeProjectID:        "proj-1",
+		NodeSelector:           config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+	}
+
+	drainMgr := &mockDrainMgr{}
+	stepFactory := &mockStepCreator{step: &actions.NoopStep{}}
+
+	deps := Dependencies{
+		K8sClient:    k8sClient,
+		DrainMgr:     drainMgr,
+		StepFactory:  stepFactory,
+		UptimeEval:   &mockUptimeEvaluator{startTime: time.Now().AddDate(0, 0, -61)},
+		GuardChecker: guardrails.NewChecker(cfg.Guardrails),
+		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
+		Config:       cfg,
+		Recorder:     record.NewFakeRecorder(20),
+	}
+
+	mgr := NewManager(deps)
+	err := mgr.Run(context.Background())
+	// Should NOT fail — node without instance.id should be skipped
+	if err != nil {
+		t.Fatalf("Run should not fail when node has no instance.id: %v", err)
+	}
+
+	// node-no-id should NOT be cordoned (skipped)
+	nodeNoID, _ := clientset.CoreV1().Nodes().Get(context.Background(), "node-no-id", metav1.GetOptions{})
+	if nodeNoID.Spec.Unschedulable {
+		t.Error("node-no-id should not be cordoned (no instance.id label)")
+	}
+
+	// node-normal SHOULD be cordoned (remediated)
+	nodeNormal, _ := clientset.CoreV1().Nodes().Get(context.Background(), "node-normal", metav1.GetOptions{})
+	if nodeNormal.Spec.Unschedulable {
+		t.Error("node-normal should be uncordoned after successful noop remediation")
+	}
+}
+
+// TDD Test 9: GetNodeStartTime fails → skip that node, don't crash the run
+func TestGetNodeStartTimeFailsSkipsNode(t *testing.T) {
+	clientset := fake.NewSimpleClientset(
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-fail",
+				Labels: map[string]string{
+					constants.LabelNodepoolID:   "pool-a",
+					constants.LabelInstanceID:   "vm-fail",
+					constants.LabelProjectID:     "proj-1",
+					constants.LabelInstanceType:  "b200-180gb-sxm-ib.8x",
+				},
+			},
+			Spec: corev1.NodeSpec{Unschedulable: false},
+		},
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-ok",
+				Labels: map[string]string{
+					constants.LabelNodepoolID:   "pool-a",
+					constants.LabelInstanceID:   "vm-ok",
+					constants.LabelProjectID:     "proj-1",
+					constants.LabelInstanceType:  "b200-180gb-sxm-ib.8x",
+				},
+			},
+			Spec: corev1.NodeSpec{Unschedulable: false},
+		},
+	)
+
+	k8sClient := k8s.NewClient(clientset, nil)
+	cfg := &config.Config{
+		CordonDays:             55,
+		ActionDays:             60,
+		DryRun:                 false,
+		VMInstanceTypeFilter:   "b200.*",
+		Action:                 config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:             config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+		DrainTimeout:           1 * time.Second,
+		ForceDrainAfterTimeout: true,
+		CrusoeAPISecret:        "test-secret",
+		CrusoeProjectID:        "proj-1",
+		NodeSelector:           config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+	}
+
+	drainMgr := &mockDrainMgr{}
+	stepFactory := &mockStepCreator{step: &actions.NoopStep{}}
+
+	// Uptime evaluator that fails for "node-fail" but succeeds for "node-ok"
+	deps := Dependencies{
+		K8sClient:    k8sClient,
+		DrainMgr:     drainMgr,
+		StepFactory:  stepFactory,
+		UptimeEval:   &mockUptimeEvaluatorFail{failNode: "node-fail", startTime: time.Now().AddDate(0, 0, -61)},
+		GuardChecker: guardrails.NewChecker(cfg.Guardrails),
+		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
+		Config:       cfg,
+		Recorder:     record.NewFakeRecorder(20),
+	}
+
+	mgr := NewManager(deps)
+	err := mgr.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run should not fail when GetNodeStartTime fails for one node: %v", err)
+	}
+
+	// node-fail should NOT be cordoned (skipped due to uptime query failure)
+	nodeFail, _ := clientset.CoreV1().Nodes().Get(context.Background(), "node-fail", metav1.GetOptions{})
+	if nodeFail.Spec.Unschedulable {
+		t.Error("node-fail should not be cordoned (uptime query failed)")
+	}
+
+	// node-ok SHOULD be remediated
+	nodeOK, _ := clientset.CoreV1().Nodes().Get(context.Background(), "node-ok", metav1.GetOptions{})
+	if nodeOK.Spec.Unschedulable {
+		t.Error("node-ok should be uncordoned after successful remediation")
+	}
+}
+
+// mockUptimeEvaluatorFail fails for a specific node name.
+type mockUptimeEvaluatorFail struct {
+	failNode  string
+	startTime time.Time
+}
+
+func (m *mockUptimeEvaluatorFail) GetNodeStartTime(ctx context.Context, nodeName string) (time.Time, error) {
+	if nodeName == m.failNode {
+		return time.Time{}, fmt.Errorf("failed to get stats summary for node %s: connection refused", nodeName)
+	}
+	return m.startTime, nil
+}
+
+// TDD Test 10: Steps composite with failing first step → remaining steps NOT run
+// (This test lives in the actions package where it has access to unexported fields)
+// See: internal/actions/step_test.go TestStepsFailingFirstStepStopsRemaining
+
+// TDD Test 11: handleMonitoredNode uncordons tool-managed node but NOT externally cordoned
+func TestHandleMonitoredNodeOnlyUncordonsManagedNodes(t *testing.T) {
+	clientset := fake.NewSimpleClientset(
+		// Tool-managed node: has managed=true label, is cordoned, uptime below threshold
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-managed",
+				Labels: map[string]string{
+					constants.LabelNodepoolID:        "pool-a",
+					constants.LabelInstanceID:        "vm-managed",
+					constants.LabelProjectID:         "proj-1",
+					constants.LabelInstanceType:      "b200-180gb-sxm-ib.8x",
+					constants.LabelRemediationManaged: "true",
+				},
+			},
+			Spec: corev1.NodeSpec{Unschedulable: true},
+		},
+		// Externally cordoned node: no managed label, is cordoned
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-external",
+				Labels: map[string]string{
+					constants.LabelNodepoolID:   "pool-a",
+					constants.LabelInstanceID:   "vm-external",
+					constants.LabelProjectID:     "proj-1",
+					constants.LabelInstanceType:  "b200-180gb-sxm-ib.8x",
+					// NO constants.LabelRemediationManaged
+				},
+			},
+			Spec: corev1.NodeSpec{Unschedulable: true},
+		},
+	)
+
+	k8sClient := k8s.NewClient(clientset, nil)
+	cfg := &config.Config{
+		CordonDays:             55,
+		ActionDays:             60,
+		DryRun:                 false,
+		VMInstanceTypeFilter:   "b200.*",
+		Action:                 config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:             config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+		DrainTimeout:           1 * time.Second,
+		ForceDrainAfterTimeout: true,
+		CrusoeAPISecret:        "test-secret",
+		CrusoeProjectID:        "proj-1",
+		NodeSelector:           config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+	}
+
+	drainMgr := &mockDrainMgr{}
+	stepFactory := &mockStepCreator{step: &actions.NoopStep{}}
+
+	deps := Dependencies{
+		K8sClient:    k8sClient,
+		DrainMgr:     drainMgr,
+		StepFactory:  stepFactory,
+		UptimeEval:   &mockUptimeEvaluator{startTime: time.Now().AddDate(0, 0, -30)}, // 30 days — below cordon threshold
+		GuardChecker: guardrails.NewChecker(cfg.Guardrails),
+		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
+		Config:       cfg,
+		Recorder:     record.NewFakeRecorder(20),
+	}
+
+	mgr := NewManager(deps)
+	err := mgr.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	// Tool-managed node should be uncordoned (uptime below threshold, we own it)
+	nodeManaged, _ := clientset.CoreV1().Nodes().Get(context.Background(), "node-managed", metav1.GetOptions{})
+	if nodeManaged.Spec.Unschedulable {
+		t.Error("node-managed should be uncordoned (tool-managed, uptime below threshold)")
+	}
+
+	// Externally cordoned node should NOT be uncordoned (we don't own it)
+	nodeExternal, _ := clientset.CoreV1().Nodes().Get(context.Background(), "node-external", metav1.GetOptions{})
+	if !nodeExternal.Spec.Unschedulable {
+		t.Error("node-external should remain cordoned (not tool-managed)")
+	}
+}
+
+// TDD Test 12: Multiple pools — per-pool guardrail is independent
+func TestMultiplePoolsPerPoolGuardrailIndependent(t *testing.T) {
+	// Two pools, each with 2 nodes at 56 days (should cordon)
+	// perPoolMaxCordoned=1, globalMaxCordoned=5
+	// Each pool can cordon 1 node independently
+	clientset := fake.NewSimpleClientset(
+		// Pool A — 2 nodes
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-a1",
+				Labels: map[string]string{
+					constants.LabelNodepoolID:   "pool-a",
+					constants.LabelInstanceID:   "vm-a1",
+					constants.LabelProjectID:     "proj-1",
+					constants.LabelInstanceType:  "b200-180gb-sxm-ib.8x",
+				},
+			},
+			Spec: corev1.NodeSpec{Unschedulable: false},
+		},
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-a2",
+				Labels: map[string]string{
+					constants.LabelNodepoolID:   "pool-a",
+					constants.LabelInstanceID:   "vm-a2",
+					constants.LabelProjectID:     "proj-1",
+					constants.LabelInstanceType:  "b200-180gb-sxm-ib.8x",
+				},
+			},
+			Spec: corev1.NodeSpec{Unschedulable: false},
+		},
+		// Pool B — 2 nodes
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-b1",
+				Labels: map[string]string{
+					constants.LabelNodepoolID:   "pool-b",
+					constants.LabelInstanceID:   "vm-b1",
+					constants.LabelProjectID:     "proj-1",
+					constants.LabelInstanceType:  "b200-180gb-sxm-ib.8x",
+				},
+			},
+			Spec: corev1.NodeSpec{Unschedulable: false},
+		},
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-b2",
+				Labels: map[string]string{
+					constants.LabelNodepoolID:   "pool-b",
+					constants.LabelInstanceID:   "vm-b2",
+					constants.LabelProjectID:     "proj-1",
+					constants.LabelInstanceType:  "b200-180gb-sxm-ib.8x",
+				},
+			},
+			Spec: corev1.NodeSpec{Unschedulable: false},
+		},
+	)
+
+	k8sClient := k8s.NewClient(clientset, nil)
+	cfg := &config.Config{
+		CordonDays:             55,
+		ActionDays:             60,
+		DryRun:                 false,
+		VMInstanceTypeFilter:   "b200.*",
+		Action:                 config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:             config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 1},
+		DrainTimeout:           1 * time.Second,
+		ForceDrainAfterTimeout: true,
+		CrusoeAPISecret:        "test-secret",
+		CrusoeProjectID:        "proj-1",
+		NodeSelector:           config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+	}
+
+	drainMgr := &mockDrainMgr{}
+	stepFactory := &mockStepCreator{step: &actions.NoopStep{}}
+
+	deps := Dependencies{
+		K8sClient:    k8sClient,
+		DrainMgr:     drainMgr,
+		StepFactory:  stepFactory,
+		UptimeEval:   &mockUptimeEvaluator{startTime: time.Now().AddDate(0, 0, -56)}, // 56 days — cordon threshold
+		GuardChecker: guardrails.NewChecker(cfg.Guardrails),
+		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
+		Config:       cfg,
+		Recorder:     record.NewFakeRecorder(20),
+	}
+
+	mgr := NewManager(deps)
+	err := mgr.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	// Count cordoned nodes per pool
+	poolACordoned := 0
+	poolBCordoned := 0
+	for _, name := range []string{"node-a1", "node-a2", "node-b1", "node-b2"} {
+		node, _ := clientset.CoreV1().Nodes().Get(context.Background(), name, metav1.GetOptions{})
+		if node.Labels[constants.LabelRemediationPhase] == string(constants.PhaseCordoned) {
+			if node.Labels[constants.LabelNodepoolID] == "pool-a" {
+				poolACordoned++
+			} else {
+				poolBCordoned++
+			}
+		}
+	}
+
+	// Each pool should have exactly 1 cordoned node (perPoolMaxCordoned=1)
+	if poolACordoned != 1 {
+		t.Errorf("pool-a cordoned = %d, want 1 (perPoolMaxCordoned=1)", poolACordoned)
+	}
+	if poolBCordoned != 1 {
+		t.Errorf("pool-b cordoned = %d, want 1 (perPoolMaxCordoned=1)", poolBCordoned)
+	}
+}
