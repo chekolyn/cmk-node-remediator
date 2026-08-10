@@ -2,7 +2,7 @@
 
 BINARY_NAME=cmk-node-remediation
 IMAGE_TAG?=latest
-IMAGE_REPO=ghcr.io/crusoecloud/cmk-node-remediation
+IMAGE_REPO=registry.your-location.ccr.crusoecloudcompute.com/crusoe-node-remediation.your-project-id
 
 build:
 	CGO_ENABLED=0 go build -o $(BINARY_NAME) ./cmd/manager

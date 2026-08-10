@@ -1,5 +1,5 @@
 image:
-  repository: ghcr.io/crusoecloud/cmk-node-remediation
+  repository: registry.your-location.ccr.crusoecloudcompute.com/crusoe-node-remediation.your-project-id
   tag: latest
   pullPolicy: IfNotPresent
 
