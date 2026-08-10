@@ -376,6 +376,10 @@ func TestParseDuration(t *testing.T) {
 		// Equivalences with weeks
 		{"1w", 168 * time.Hour, false},   // 1w = 168h
 		{"7d", 168 * time.Hour, false},   // 7d = 168h = 1w
+		// Weeks edge cases
+		{"0w", 0, false},
+		{"w", 0, true},  // no number before 'w'
+		{"2w1d6h30m", 2*7*24*time.Hour + 24*time.Hour + 6*time.Hour + 30*time.Minute, false},
 	}
 
 	for _, tt := range tests {
@@ -490,5 +494,68 @@ crusoeProjectId: proj-1
 				t.Errorf("LoadFromYAML() error = %v, wantErr = %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestLoadConfigWeeks(t *testing.T) {
+	// Test weeks in YAML config — end-to-end through LoadFromYAML
+	yamlData := []byte(`
+cordonThreshold: 1w
+actionThreshold: 2w
+cooldown: 3d
+action:
+  type: noop
+  timeout: 5m
+  maxRetries: 2
+crusoeApiSecret: secret
+crusoeProjectId: proj-1
+`)
+
+	cfg, err := LoadFromYAML(yamlData)
+	if err != nil {
+		t.Fatalf("LoadFromYAML failed: %v", err)
+	}
+
+	if cfg.CordonThreshold != Duration(7*24*time.Hour) {
+		t.Errorf("CordonThreshold = %v, want 1w (168h)", cfg.CordonThreshold)
+	}
+	if cfg.ActionThreshold != Duration(14*24*time.Hour) {
+		t.Errorf("ActionThreshold = %v, want 2w (336h)", cfg.ActionThreshold)
+	}
+	if cfg.Cooldown != Duration(3*24*time.Hour) {
+		t.Errorf("Cooldown = %v, want 3d (72h)", cfg.Cooldown)
+	}
+}
+
+func TestLoadConfigWeeksMixedUnits(t *testing.T) {
+	// Test weeks mixed with days and hours in YAML config
+	yamlData := []byte(`
+cordonThreshold: 1w2d6h
+actionThreshold: 2w1d
+cooldown: 1w12h
+action:
+  type: noop
+  timeout: 5m
+  maxRetries: 2
+crusoeApiSecret: secret
+crusoeProjectId: proj-1
+`)
+
+	cfg, err := LoadFromYAML(yamlData)
+	if err != nil {
+		t.Fatalf("LoadFromYAML failed: %v", err)
+	}
+
+	// 1w2d6h = 7d + 2d + 6h = 9d + 6h = 222h
+	if cfg.CordonThreshold != Duration(222*time.Hour) {
+		t.Errorf("CordonThreshold = %v, want 1w2d6h (222h)", cfg.CordonThreshold)
+	}
+	// 2w1d = 14d + 1d = 15d = 360h
+	if cfg.ActionThreshold != Duration(360*time.Hour) {
+		t.Errorf("ActionThreshold = %v, want 2w1d (360h)", cfg.ActionThreshold)
+	}
+	// 1w12h = 7d + 12h = 168h + 12h = 180h
+	if cfg.Cooldown != Duration(180*time.Hour) {
+		t.Errorf("Cooldown = %v, want 1w12h (180h)", cfg.Cooldown)
 	}
 }
