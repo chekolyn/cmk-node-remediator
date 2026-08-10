@@ -5,12 +5,12 @@ End-to-end tests for cmk-node-remediation.
 ## Quick Start
 
 ```bash
-# 1. Copy config and set your API key
-cp e2e/config.env e2e/local.env
-# Edit local.env: set CRUSOE_API_KEY
+# 1. Copy values template and fill in your cluster details
+cp e2e/values.yaml e2e/local-values.yaml
+# Edit e2e/local-values.yaml: set image.repository, nodeSelector, crusoeProjectId
 
 # 2. Run all phases (build + deploy + verify)
-bash e2e/run-e2e.sh all
+bash e2e/run-e2e.sh all --api-key YOUR_CRUSOE_API_KEY
 
 # 3. Or run individual phases
 bash e2e/run-e2e.sh build
@@ -21,83 +21,69 @@ bash e2e/run-e2e.sh vm-reset
 bash e2e/run-e2e.sh cleanup
 ```
 
-## Configuration
+## How It Works
 
-All settings are parameterized via environment variables with defaults
-for your test cluster.
-
-Copy `e2e/config.env` to `e2e/local.env` and customize:
+The E2E test uses the **same Helm chart** as production — just with a
+different `values.yaml`. The workflow is identical:
 
 ```bash
-# Cluster
-CLUSTER_NAME=your-cluster-name
-CLUSTER_ID=your-cluster-id
-PROJECT_ID=your-project-id
-LOCATION=your-location
+# E2E (test cluster, fast thresholds, noop action)
+helm install cmk-node-remediation ./helm/cmk-node-remediation \
+  --namespace cmk-node-remediation \
+  -f e2e/local-values.yaml
 
-# Registry
-REGISTRY_URL=your-registry-url.ccr.crusoecloudcompute.com
-REGISTRY_REPO=cmk-node-remediation.your-project-id
-IMAGE_TAG=v0.0.1
-
-# Crusoe API
-CRUSOE_API_URL=https://api.cloud.crusoe.ai/v1alpha5
-CRUSOE_API_KEY=  # SET THIS
-
-# Test thresholds (fast for testing)
-VM_INSTANCE_TYPE_FILTER=c1a.*
-CORDON_THRESHOLD=30m
-ACTION_THRESHOLD=1h
-COOLDOWN=15m
-SCHEDULE=*/5 * * * *
+# Production (real cluster, 55d/60d thresholds, vm-reset)
+helm install cmk-node-remediation ./helm/cmk-node-remediation \
+  --namespace cmk-node-remediation \
+  -f my-production-values.yaml
 ```
 
-Or override via env vars or command line:
+## Files
+
+| File | Committed? | Purpose |
+|------|-----------|---------|
+| `e2e/values.yaml` | ✅ Yes | Template with test defaults (noop, 30m/1h, dry-run) |
+| `e2e/local-values.yaml` | ❌ No (gitignored) | Your cluster details — copy from template |
+| `e2e/run-e2e.sh` | ✅ Yes | Test script — 6 phases, all idempotent |
+
+## Setup
+
+Copy the values template and fill in your cluster details:
 
 ```bash
-# Different cluster
-CLUSTER_NAME=your-cluster PROJECT_ID=your-project-id bash e2e/run-e2e.sh deploy
+cp e2e/values.yaml e2e/local-values.yaml
+```
 
-# Different VM type filter
-VM_INSTANCE_TYPE_FILTER=b200.* bash e2e/run-e2e.sh deploy
+Edit `e2e/local-values.yaml`:
 
-# Pass API key via flag
-bash e2e/run-e2e.sh deploy --api-key YOUR_KEY
+```yaml
+image:
+  repository: registry.your-location.ccr.crusoecloudcompute.com/cmk-node-remediation.your-project-id
+  tag: v0.0.1
+
+nodeSelector:
+  matchLabels:
+    crusoe.ai/project.id: "your-project-id"
+
+crusoeProjectId: "your-project-id"
 ```
 
 ## Phases
 
 | Phase | Command | What it does | Idempotent? |
 |-------|---------|-------------|-------------|
-| build | `bash e2e/run-e2e.sh build` | Build + push container image | ✅ Yes |
-| deploy | `bash e2e/run-e2e.sh deploy` | Create secret + install Helm (dry-run) | ✅ Yes |
-| verify | `bash e2e/run-e2e.sh verify` | Check logs, events, labels | ✅ Yes (read-only) |
-| dry-run-off | `bash e2e/run-e2e.sh dry-run-off` | Upgrade to dryRun=false (noop) | ✅ Yes |
-| vm-reset | `bash e2e/run-e2e.sh vm-reset` | Real VM reset (interactive confirm) | ✅ Yes |
-| cleanup | `bash e2e/run-e2e.sh cleanup` | Uninstall + uncordon nodes | ✅ Yes |
-| all | `bash e2e/run-e2e.sh all` | build + deploy + verify | ✅ Yes |
+| build | `bash e2e/run-e2e.sh build` | Build + push container image | ✅ |
+| deploy | `bash e2e/run-e2e.sh deploy --api-key KEY` | Create secret + install Helm (dry-run) | ✅ |
+| verify | `bash e2e/run-e2e.sh verify` | Check logs, events, labels | ✅ (read-only) |
+| dry-run-off | `bash e2e/run-e2e.sh dry-run-off` | Upgrade to dryRun=false (noop) | ✅ |
+| vm-reset | `bash e2e/run-e2e.sh vm-reset` | Real VM reset (interactive confirm) | ✅ |
+| cleanup | `bash e2e/run-e2e.sh cleanup` | Uninstall + uncordon nodes | ✅ |
+| all | `bash e2e/run-e2e.sh all --api-key KEY` | build + deploy + verify | ✅ |
 
-## Idempotency
+## Flags
 
-- **Secret**: `kubectl create secret --dry-run=client -o yaml | kubectl apply -f -` — creates or updates
-- **Helm**: `helm upgrade --install` — installs or upgrades
-- **Cleanup**: uncordons nodes, removes labels/taints, deletes namespace
-- **Values**: generated from env vars, no hardcoded files to manage
-
-## Using with a Different Cluster
-
-```bash
-# Example: a large customer cluster
-CLUSTER_NAME=your-cluster \
-CLUSTER_ID=your-cluster-id \
-PROJECT_ID=your-project-id \
-LOCATION=your-location \
-VM_INSTANCE_TYPE_FILTER=b200.* \
-CORDON_THRESHOLD=55d \
-ACTION_THRESHOLD=60d \
-COOLDOWN=7d \
-SCHEDULE="0 0 * * *" \
-GLOBAL_MAX_CORDONED=5 \
-PER_POOL_MAX_CORDONED=2 \
-bash e2e/run-e2e.sh deploy --api-key YOUR_KEY
-```
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--api-key KEY` | Crusoe API key for K8s secret | (required for deploy) |
+| `--values FILE` | Path to values file | `e2e/local-values.yaml` |
+| `--namespace NS` | Kubernetes namespace | `cmk-node-remediation` |
