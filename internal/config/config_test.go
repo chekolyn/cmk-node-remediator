@@ -368,6 +368,14 @@ func TestParseDuration(t *testing.T) {
 		{"123", 0, true},  // no unit suffix
 		// Negative is valid in Go's time.ParseDuration
 		{"-5d", -120 * time.Hour, false},
+		// Weeks
+		{"1w", 7 * 24 * time.Hour, false},
+		{"2w", 14 * 24 * time.Hour, false},
+		{"1w3d", 10 * 24 * time.Hour, false},
+		{"1w12h", 7*24*time.Hour + 12*time.Hour, false},
+		// Equivalences with weeks
+		{"1w", 168 * time.Hour, false},   // 1w = 168h
+		{"7d", 168 * time.Hour, false},   // 7d = 168h = 1w
 	}
 
 	for _, tt := range tests {

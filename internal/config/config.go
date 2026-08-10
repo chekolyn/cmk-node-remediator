@@ -38,9 +38,34 @@ func ParseDuration(s string) (time.Duration, error) {
 		return 0, fmt.Errorf("empty duration string")
 	}
 
+	// Replace "w" with "d" * 7 by expanding weeks into days
+	// e.g., "2w" → "14d", "1w3d" → "10d"
+	result := s
+	for {
+		idx := strings.IndexByte(result, 'w')
+		if idx == -1 {
+			break
+		}
+		start := idx - 1
+		for start >= 0 && (result[start] >= '0' && result[start] <= '9') {
+			start--
+		}
+		start++
+		if start >= idx {
+			return 0, fmt.Errorf("invalid duration %q: no number before 'w'", s)
+		}
+		weeksStr := result[start:idx]
+		var weeks int
+		if _, err := fmt.Sscanf(weeksStr, "%d", &weeks); err != nil {
+			return 0, fmt.Errorf("invalid duration %q: cannot parse weeks %q", s, weeksStr)
+		}
+		days := weeks * 7
+		replacement := fmt.Sprintf("%dd", days)
+		result = result[:start] + replacement + result[idx+1:]
+	}
+
 	// Replace "d" with "h" * 24 by expanding days into hours
 	// e.g., "55d" → "1320h", "1d12h" → "36h"
-	result := s
 	for {
 		idx := strings.IndexByte(result, 'd')
 		if idx == -1 {
