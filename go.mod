@@ -3,6 +3,8 @@ module crusoe-cmk-node-remediation
 go 1.25.0
 
 require (
+	github.com/antihax/optional v1.0.0
+	github.com/crusoecloud/client-go v1.0.4
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.30.0
 	k8s.io/apimachinery v0.30.0
