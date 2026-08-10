@@ -1,0 +1,47 @@
+image:
+  repository: ghcr.io/crusoecloud/node-remediation
+  tag: latest
+  pullPolicy: IfNotPresent
+
+schedule: "0 0 * * *"
+
+nodeSelector:
+  matchLabels: {}
+
+vmInstanceTypeFilter: "b200.*"
+
+cordonDays: 55
+actionDays: 60
+cooldownDays: 7
+
+action:
+  type: vm-reset          # vm-reset | vm-stop | vm-start | vm-delete | noop
+  timeout: 30m
+  maxRetries: 3
+  # For multi-step sequences, uncomment:
+  # steps:
+  #   - type: vm-stop
+  #     timeout: 5m
+  #   - type: vm-delete
+  #     timeout: 30m
+  #     wait: 2m
+
+guardrails:
+  globalMaxCordoned: 5
+  globalMaxCordonedPercent: null
+  perPoolMaxCordoned: 2
+  perPoolMaxCordonedPercent: null
+
+drainTimeout: 10m
+forceDrainAfterTimeout: true
+
+crusoeApiSecret: crusoe-api-credentials
+crusoeProjectId: ""
+
+dryRun: false
+
+slackWebhookUrl: ""
+
+activeDeadlineSeconds: 7200
+failedJobsHistoryLimit: 3
+successfulJobsHistoryLimit: 1
