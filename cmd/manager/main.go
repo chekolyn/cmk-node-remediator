@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -27,6 +28,11 @@ import (
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.LUTC)
+
+	// --validate: load and validate config, then exit (for e2e/CI)
+	validateOnly := flag.Bool("validate", false, "validate config and exit")
+	flag.Parse()
+
 	log.Println("cmk-node-remediation starting")
 
 	// 1. Load config from mounted ConfigMap
@@ -49,8 +55,14 @@ func main() {
 		log.Fatalf("config validation failed: %v", err)
 	}
 
-	log.Printf("config loaded: cordonDays=%d, actionDays=%d, action=%s, dryRun=%v",
+	log.Printf("config loaded: cordonThreshold=%v, actionThreshold=%v, action=%s, dryRun=%v",
 		cfg.CordonThreshold, cfg.ActionThreshold, cfg.Action.Type, cfg.DryRun)
+
+	// If --validate, exit here (config is valid)
+	if *validateOnly {
+		log.Println("config validation passed")
+		os.Exit(0)
+	}
 
 	// 2. Load Crusoe API credentials from mounted Secret
 	apiKey := os.Getenv("CRUSOE_API_KEY")

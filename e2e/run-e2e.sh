@@ -105,7 +105,7 @@ Then edit values.yaml with your cluster details."
 
     log "Validating values: $VALUES_FILE"
 
-    # Check required fields are not empty
+    # Quick shell-level checks for required fields
     local errors=0
 
     local repo=$(grep 'repository:' "$VALUES_FILE" | head -1 | sed 's/.*repository: *//' | tr -d '"' | sed 's/#.*//')
@@ -127,27 +127,48 @@ Then edit values.yaml with your cluster details."
         errors=$((errors + 1))
     fi
 
-    # Check thresholds are valid
-    local cordon=$(grep 'cordonThreshold:' "$VALUES_FILE" | head -1 | sed 's/.*cordonThreshold: *//' | tr -d '"' | sed 's/#.*//')
-    local action=$(grep 'actionThreshold:' "$VALUES_FILE" | head -1 | sed 's/.*actionThreshold: *//' | tr -d '"' | sed 's/#.*//')
-    if [ -z "$cordon" ]; then
-        warn "cordonThreshold is empty"
-        errors=$((errors + 1))
-    fi
-    if [ -z "$action" ]; then
-        warn "actionThreshold is empty"
-        errors=$((errors + 1))
-    fi
-
     if [ $errors -gt 0 ]; then
         err "Values file has $errors issue(s) — fix before deploying."
     fi
 
+    # Deep validation: render Helm chart → extract config.yaml → run binary --validate
+    log "Running binary config validation..."
+    local rendered=$(helm template "$RELEASE_NAME" "$CHART_DIR" -f "$VALUES_FILE" 2>&1)
+    if [ $? -ne 0 ]; then
+        err "Helm template failed:\n$rendered"
+    fi
+
+    # Extract config.yaml from the rendered ConfigMap
+    local config_yaml=$(echo "$rendered" | awk '/^data:$/{found=1} found && /^  config.yaml: \|/{p=1; next} p && /^  [a-zA-Z]/{p=0} p{sub(/^    /,""); print}')
+
+    if [ -z "$config_yaml" ]; then
+        err "Could not extract config.yaml from rendered Helm output"
+    fi
+
+    # Write to temp file and validate with binary
+    local tmp_config=$(mktemp /tmp/cmk-node-remediation-config-XXXXXX.yaml)
+    echo "$config_yaml" > "$tmp_config"
+
+    # Build binary if needed
+    if [ ! -f "$REPO_DIR/cmk-node-remediation" ]; then
+        log "Building binary for validation..."
+        (cd "$REPO_DIR" && go build -o cmk-node-remediation ./cmd/manager)
+    fi
+
+    # Run binary with --validate
+    if CONFIG_PATH="$tmp_config" "$REPO_DIR/cmk-node-remediation" --validate 2>&1; then
+        log "Binary config validation passed"
+    else
+        rm -f "$tmp_config"
+        err "Binary config validation failed — check config.yaml output above"
+    fi
+    rm -f "$tmp_config"
+
     log "Values file OK: $VALUES_FILE"
     echo "  image.repository: $repo"
     echo "  crusoeProjectId:   $project_id"
-    echo "  cordonThreshold:   $cordon"
-    echo "  actionThreshold:   $action"
+    echo "  cordonThreshold:   $(grep 'cordonThreshold:' "$VALUES_FILE" | head -1 | sed 's/.*cordonThreshold: *//' | tr -d '"' | sed 's/#.*//')"
+    echo "  actionThreshold:   $(grep 'actionThreshold:' "$VALUES_FILE" | head -1 | sed 's/.*actionThreshold: *//' | tr -d '"' | sed 's/#.*//')"
     echo "  vmInstanceTypeFilter: $(grep 'vmInstanceTypeFilter:' "$VALUES_FILE" | head -1 | sed 's/.*vmInstanceTypeFilter: *//' | tr -d '"' | sed 's/#.*//')"
     echo "  action.type:       $(grep 'type:' "$VALUES_FILE" | head -1 | sed 's/.*type: *//' | tr -d '"' | sed 's/#.*//')"
     echo "  dryRun:            $(grep 'dryRun:' "$VALUES_FILE" | head -1 | sed 's/.*dryRun: *//' | sed 's/#.*//')"
