@@ -10,13 +10,13 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/record"
 
-	"crusoe-cmk-node-remediation/internal/actions"
-	"crusoe-cmk-node-remediation/internal/config"
-	"crusoe-cmk-node-remediation/internal/constants"
-	"crusoe-cmk-node-remediation/internal/crusoe"
-	"crusoe-cmk-node-remediation/internal/discovery"
-	"crusoe-cmk-node-remediation/internal/guardrails"
-	"crusoe-cmk-node-remediation/internal/k8s"
+	"cmk-node-remediation/internal/actions"
+	"cmk-node-remediation/internal/config"
+	"cmk-node-remediation/internal/constants"
+	"cmk-node-remediation/internal/crusoe"
+	"cmk-node-remediation/internal/discovery"
+	"cmk-node-remediation/internal/guardrails"
+	"cmk-node-remediation/internal/k8s"
 )
 
 func TestRunDryRunNoChanges(t *testing.T) {

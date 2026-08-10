@@ -8,9 +8,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
-	"crusoe-cmk-node-remediation/internal/config"
-	"crusoe-cmk-node-remediation/internal/constants"
-	"crusoe-cmk-node-remediation/internal/k8s"
+	"cmk-node-remediation/internal/config"
+	"cmk-node-remediation/internal/constants"
+	"cmk-node-remediation/internal/k8s"
 )
 
 func TestDiscoverNodes(t *testing.T) {

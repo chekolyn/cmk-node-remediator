@@ -1,10 +1,10 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: {{ include "node-remediation.fullname" . }}
+  name: {{ include "cmk-node-remediation.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "node-remediation.labels" . | nindent 4 }}
+    {{- include "cmk-node-remediation.labels" . | nindent 4 }}
 spec:
   schedule: "{{ .Values.schedule }}"
   concurrencyPolicy: Forbid
@@ -16,7 +16,7 @@ spec:
       activeDeadlineSeconds: {{ .Values.activeDeadlineSeconds }}
       template:
         spec:
-          serviceAccountName: {{ include "node-remediation.fullname" . }}
+          serviceAccountName: {{ include "cmk-node-remediation.fullname" . }}
           restartPolicy: OnFailure
           securityContext:
             runAsNonRoot: true
@@ -24,7 +24,7 @@ spec:
             runAsGroup: 65532
             fsGroup: 65532
           containers:
-            - name: node-remediation
+            - name: cmk-node-remediation
               image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
               imagePullPolicy: {{ .Values.image.pullPolicy }}
               securityContext:
@@ -35,7 +35,7 @@ spec:
                     - ALL
               env:
                 - name: CONFIG_PATH
-                  value: /etc/node-remediation/config.yaml
+                  value: /etc/cmk-node-remediation/config.yaml
                 - name: CRUSOE_API_KEY
                   valueFrom:
                     secretKeyRef:
@@ -48,7 +48,7 @@ spec:
                       key: api-url
               volumeMounts:
                 - name: config
-                  mountPath: /etc/node-remediation
+                  mountPath: /etc/cmk-node-remediation
                   readOnly: true
                 - name: tmp
                   mountPath: /tmp
@@ -56,6 +56,6 @@ spec:
           volumes:
             - name: config
               configMap:
-                name: {{ include "node-remediation.fullname" . }}
+                name: {{ include "cmk-node-remediation.fullname" . }}
             - name: tmp
               emptyDir: {}

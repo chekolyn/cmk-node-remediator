@@ -8,9 +8,9 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	"crusoe-cmk-node-remediation/internal/config"
-	"crusoe-cmk-node-remediation/internal/constants"
-	"crusoe-cmk-node-remediation/internal/k8s"
+	"cmk-node-remediation/internal/config"
+	"cmk-node-remediation/internal/constants"
+	"cmk-node-remediation/internal/k8s"
 )
 
 // NodeInfo holds metadata about a discovered node.

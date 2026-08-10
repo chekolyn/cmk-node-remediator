@@ -9,13 +9,13 @@ NVIDIA 60-day NVLink firmware bug threshold.
 ```bash
 # Create secret with Crusoe API credentials first
 kubectl create secret generic crusoe-api-credentials \
-  --namespace node-remediation \
+  --namespace cmk-node-remediation \
   --from-literal=api-key=<key> \
   --from-literal=api-url=<url>
 
 # Install with dry-run mode first
-helm install node-remediation ./node-remediation \
-  --namespace node-remediation \
+helm install cmk-node-remediation ./cmk-node-remediation \
+  --namespace cmk-node-remediation \
   --create-namespace \
   --set nodeSelector.matchLabels.crusoe.ai/project.id=<your-project-id> \
   --set crusoeProjectId=<your-project-id> \

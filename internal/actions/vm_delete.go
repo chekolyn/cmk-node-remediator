@@ -6,8 +6,8 @@ import (
 	"log"
 	"time"
 
-	"crusoe-cmk-node-remediation/internal/crusoe"
-	"crusoe-cmk-node-remediation/internal/k8s"
+	"cmk-node-remediation/internal/crusoe"
+	"cmk-node-remediation/internal/k8s"
 )
 
 // VMDeleteStep deletes a VM via the Crusoe API.

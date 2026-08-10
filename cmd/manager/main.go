@@ -16,23 +16,23 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/record"
 
-	"crusoe-cmk-node-remediation/internal/actions"
-	"crusoe-cmk-node-remediation/internal/config"
-	"crusoe-cmk-node-remediation/internal/crusoe"
-	"crusoe-cmk-node-remediation/internal/discovery"
-	"crusoe-cmk-node-remediation/internal/guardrails"
-	"crusoe-cmk-node-remediation/internal/k8s"
-	"crusoe-cmk-node-remediation/internal/lifecycle"
+	"cmk-node-remediation/internal/actions"
+	"cmk-node-remediation/internal/config"
+	"cmk-node-remediation/internal/crusoe"
+	"cmk-node-remediation/internal/discovery"
+	"cmk-node-remediation/internal/guardrails"
+	"cmk-node-remediation/internal/k8s"
+	"cmk-node-remediation/internal/lifecycle"
 )
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.LUTC)
-	log.Println("node-remediation starting")
+	log.Println("cmk-node-remediation starting")
 
 	// 1. Load config from mounted ConfigMap
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
-		configPath = "/etc/node-remediation/config.yaml"
+		configPath = "/etc/cmk-node-remediation/config.yaml"
 	}
 
 	configData, err := os.ReadFile(configPath)
@@ -90,7 +90,7 @@ func main() {
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartLogging(log.Printf)
 	broadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: k8sClientset.CoreV1().Events("")})
-	recorder := broadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "node-remediation"})
+	recorder := broadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "cmk-node-remediation"})
 
 	// 10. Create uptime evaluator (uses K8s client for stats summary)
 	uptimeEval := &k8sUptimeEvaluator{k8sClient: k8sClient}
@@ -118,7 +118,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	log.Println("node-remediation completed successfully")
+	log.Println("cmk-node-remediation completed successfully")
 }
 
 // k8sUptimeEvaluator implements lifecycle.UptimeEvaluator using the K8s client.

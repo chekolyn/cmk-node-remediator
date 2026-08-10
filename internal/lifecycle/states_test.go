@@ -3,7 +3,7 @@ package lifecycle
 import (
 	"testing"
 
-	"crusoe-cmk-node-remediation/internal/constants"
+	"cmk-node-remediation/internal/constants"
 )
 
 func TestClassifyUptime(t *testing.T) {

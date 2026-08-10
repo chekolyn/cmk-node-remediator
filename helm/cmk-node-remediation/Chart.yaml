@@ -1,5 +1,5 @@
 apiVersion: v2
-name: node-remediation
+name: cmk-node-remediation
 description: Automatically cordons, drains, and takes configurable remediation actions on B200 GPU nodes approaching the NVIDIA 60-day NVLink firmware bug threshold
 type: application
 version: 0.1.0

@@ -1,9 +1,9 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ include "node-remediation.fullname" . }}
+  name: {{ include "cmk-node-remediation.fullname" . }}
   labels:
-    {{- include "node-remediation.labels" . | nindent 4 }}
+    {{- include "cmk-node-remediation.labels" . | nindent 4 }}
 rules:
   - apiGroups: [""]
     resources: ["nodes"]

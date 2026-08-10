@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	"crusoe-cmk-node-remediation/internal/k8s"
+	"cmk-node-remediation/internal/k8s"
 )
 
 // sleepOrCancel sleeps for the given duration or returns on context cancellation.

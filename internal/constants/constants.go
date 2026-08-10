@@ -26,7 +26,7 @@ const (
 	AnnotationAttempt            = "crusoe.ai/remediation.attempt"
 	AnnotationLastAction         = "crusoe.ai/remediation.last-action"
 
-	ManagedByValue = "node-remediation"
+	ManagedByValue = "cmk-node-remediation"
 )
 
 // Taint key constants.

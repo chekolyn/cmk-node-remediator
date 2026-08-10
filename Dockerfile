@@ -9,11 +9,11 @@ RUN go mod download
 
 # Copy source code and build
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o node-remediation ./cmd/manager
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o cmk-node-remediation ./cmd/manager
 
 # Runtime stage
 FROM gcr.io/distroless/static-debian12
 
-COPY --from=builder /app/node-remediation /node-remediation
+COPY --from=builder /app/cmk-node-remediation /cmk-node-remediation
 
-ENTRYPOINT ["/node-remediation"]
+ENTRYPOINT ["/cmk-node-remediation"]

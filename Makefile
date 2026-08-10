@@ -1,8 +1,8 @@
 .PHONY: build test lint vendor docker-build docker-push clean
 
-BINARY_NAME=node-remediation
+BINARY_NAME=cmk-node-remediation
 IMAGE_TAG?=latest
-IMAGE_REPO=ghcr.io/crusoecloud/node-remediation
+IMAGE_REPO=ghcr.io/crusoecloud/cmk-node-remediation
 
 build:
 	CGO_ENABLED=0 go build -o $(BINARY_NAME) ./cmd/manager
