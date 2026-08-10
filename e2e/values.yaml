@@ -1,0 +1,51 @@
+# E2E Test Values — Template
+#
+# Copy this file to e2e/local-values.yaml and fill in your cluster details:
+#   cp e2e/values.yaml e2e/local-values.yaml
+#
+# Then run: bash e2e/run-e2e.sh all --api-key YOUR_KEY
+
+image:
+  repository: ""  # Set: registry.your-location.ccr.crusoecloudcompute.com/cmk-node-remediation.your-project-id
+  tag: v0.0.1
+  pullPolicy: IfNotPresent
+
+# Every 5 minutes for fast testing
+schedule: "*/5 * * * *"
+
+# Target nodes in your project
+nodeSelector:
+  matchLabels:
+    # crusoe.ai/project.id: "your-project-id"
+
+# Test cluster VM type filter
+vmInstanceTypeFilter: "c1a.*"
+
+# Fast thresholds for testing (minutes, not days)
+cordonThreshold: 30m
+actionThreshold: 1h
+cooldown: 15m
+
+# Start with noop — no real VM actions
+action:
+  type: noop
+  timeout: 5m
+  maxRetries: 2
+
+# Conservative guardrails for testing
+guardrails:
+  globalMaxCordoned: 2
+  perPoolMaxCordoned: 1
+
+drainTimeout: 2m
+forceDrainAfterTimeout: true
+
+crusoeApiSecret: crusoe-api-credentials
+crusoeProjectId: ""  # Set: your-project-id
+
+# Start with dry-run — no changes to nodes
+dryRun: true
+
+activeDeadlineSeconds: 600
+failedJobsHistoryLimit: 5
+successfulJobsHistoryLimit: 3
