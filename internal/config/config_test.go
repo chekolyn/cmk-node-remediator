@@ -289,6 +289,39 @@ func TestValidateConfig(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name: "zero cordonThreshold rejected",
+			cfg: Config{
+				CordonThreshold: 0, ActionThreshold: Duration(60 * 24 * time.Hour), Cooldown: Duration(7 * 24 * time.Hour),
+				Action:          ActionConfig{Type: "vm-reset", Timeout: 30 * time.Minute, MaxRetries: 3},
+				Guardrails:      GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+				DrainTimeout:    10 * time.Minute,
+				CrusoeAPISecret: "secret", CrusoeProjectID: "proj-1",
+			},
+			wantErr: true,
+		},
+		{
+			name: "negative cooldown rejected",
+			cfg: Config{
+				CordonThreshold: Duration(55 * 24 * time.Hour), ActionThreshold: Duration(60 * 24 * time.Hour), Cooldown: Duration(-1 * time.Hour),
+				Action:          ActionConfig{Type: "vm-reset", Timeout: 30 * time.Minute, MaxRetries: 3},
+				Guardrails:      GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+				DrainTimeout:    10 * time.Minute,
+				CrusoeAPISecret: "secret", CrusoeProjectID: "proj-1",
+			},
+			wantErr: true,
+		},
+		{
+			name: "zero cooldown allowed",
+			cfg: Config{
+				CordonThreshold: Duration(55 * 24 * time.Hour), ActionThreshold: Duration(60 * 24 * time.Hour), Cooldown: 0,
+				Action:          ActionConfig{Type: "vm-reset", Timeout: 30 * time.Minute, MaxRetries: 3},
+				Guardrails:      GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+				DrainTimeout:    10 * time.Minute,
+				CrusoeAPISecret: "secret", CrusoeProjectID: "proj-1",
+			},
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -296,6 +329,157 @@ func TestValidateConfig(t *testing.T) {
 			err := tt.cfg.Validate()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Validate() error = %v, wantErr = %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestParseDuration(t *testing.T) {
+	tests := []struct {
+		input   string
+		want    time.Duration
+		wantErr bool
+	}{
+		// Days
+		{"55d", 55 * 24 * time.Hour, false},
+		{"1d", 24 * time.Hour, false},
+		{"0d", 0, false},
+		// Hours
+		{"1h", time.Hour, false},
+		{"24h", 24 * time.Hour, false},
+		// Minutes
+		{"30m", 30 * time.Minute, false},
+		{"90m", 90 * time.Minute, false},
+		// Seconds
+		{"1800s", 1800 * time.Second, false},
+		{"60s", 60 * time.Second, false},
+		// Mixed units
+		{"1d12h", 36 * time.Hour, false},
+		{"1h30m", 90 * time.Minute, false},
+		{"2d3h30m", 2*24*time.Hour + 3*time.Hour + 30*time.Minute, false},
+		// Equivalences
+		{"1h", 60 * time.Minute, false},  // 1h = 60m
+		{"60m", time.Hour, false},        // 60m = 1h
+		{"1d", 24 * time.Hour, false},    // 1d = 24h
+		// Invalid
+		{"invalid", 0, true},
+		{"", 0, true},
+		{"d", 0, true},
+		{"123", 0, true},  // no unit suffix
+		// Negative is valid in Go's time.ParseDuration
+		{"-5d", -120 * time.Hour, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got, err := ParseDuration(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ParseDuration(%q) error = %v, wantErr = %v", tt.input, err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && got != tt.want {
+				t.Errorf("ParseDuration(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestLoadConfigMixedUnitsDaysAndHours(t *testing.T) {
+	// Test "1d12h" (1 day + 12 hours = 36 hours)
+	yamlData := []byte(`
+cordonThreshold: 1d12h
+actionThreshold: 2d
+cooldown: 6h
+action:
+  type: noop
+  timeout: 5m
+  maxRetries: 2
+crusoeApiSecret: secret
+crusoeProjectId: proj-1
+`)
+
+	cfg, err := LoadFromYAML(yamlData)
+	if err != nil {
+		t.Fatalf("LoadFromYAML failed: %v", err)
+	}
+
+	if cfg.CordonThreshold != Duration(36*time.Hour) {
+		t.Errorf("CordonThreshold = %v, want 36h (1d12h)", cfg.CordonThreshold)
+	}
+	if cfg.ActionThreshold != Duration(48*time.Hour) {
+		t.Errorf("ActionThreshold = %v, want 48h (2d)", cfg.ActionThreshold)
+	}
+	if cfg.Cooldown != Duration(6*time.Hour) {
+		t.Errorf("Cooldown = %v, want 6h", cfg.Cooldown)
+	}
+}
+
+func TestLoadConfigSeconds(t *testing.T) {
+	yamlData := []byte(`
+cordonThreshold: 60s
+actionThreshold: 120s
+cooldown: 30s
+action:
+  type: noop
+  timeout: 5m
+  maxRetries: 2
+crusoeApiSecret: secret
+crusoeProjectId: proj-1
+`)
+
+	cfg, err := LoadFromYAML(yamlData)
+	if err != nil {
+		t.Fatalf("LoadFromYAML failed: %v", err)
+	}
+
+	if cfg.CordonThreshold != Duration(60*time.Second) {
+		t.Errorf("CordonThreshold = %v, want 60s", cfg.CordonThreshold)
+	}
+	if cfg.ActionThreshold != Duration(120*time.Second) {
+		t.Errorf("ActionThreshold = %v, want 120s", cfg.ActionThreshold)
+	}
+	if cfg.Cooldown != Duration(30*time.Second) {
+		t.Errorf("Cooldown = %v, want 30s", cfg.Cooldown)
+	}
+}
+
+func TestLoadConfigInvalidDuration(t *testing.T) {
+	tests := []struct {
+		name    string
+		yaml    string
+		wantErr bool
+	}{
+		{"invalid string", `
+cordonThreshold: invalid
+actionThreshold: 1h
+cooldown: 5m
+action: {type: noop, timeout: 5m, maxRetries: 2}
+crusoeApiSecret: secret
+crusoeProjectId: proj-1
+`, true},
+		{"empty string", `
+cordonThreshold: ""
+actionThreshold: 1h
+cooldown: 5m
+action: {type: noop, timeout: 5m, maxRetries: 2}
+crusoeApiSecret: secret
+crusoeProjectId: proj-1
+`, true},
+		{"no unit suffix", `
+cordonThreshold: "123"
+actionThreshold: 1h
+cooldown: 5m
+action: {type: noop, timeout: 5m, maxRetries: 2}
+crusoeApiSecret: secret
+crusoeProjectId: proj-1
+`, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := LoadFromYAML([]byte(tt.yaml))
+			if (err != nil) != tt.wantErr {
+				t.Errorf("LoadFromYAML() error = %v, wantErr = %v", err, tt.wantErr)
 			}
 		})
 	}
