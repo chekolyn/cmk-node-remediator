@@ -102,7 +102,55 @@ Copy e2e/example-values.yaml to e2e/values.yaml and customize:
   cp e2e/example-values.yaml e2e/values.yaml
 Then edit values.yaml with your cluster details."
     fi
-    log "Using values: $VALUES_FILE"
+
+    log "Validating values: $VALUES_FILE"
+
+    # Check required fields are not empty
+    local errors=0
+
+    local repo=$(grep 'repository:' "$VALUES_FILE" | head -1 | sed 's/.*repository: *//' | tr -d '"' | sed 's/#.*//')
+    if [ -z "$repo" ] || [ "$repo" = '""' ]; then
+        warn "image.repository is empty — set your Crusoe Container Registry URL"
+        errors=$((errors + 1))
+    fi
+
+    local project_id=$(grep 'crusoeProjectId:' "$VALUES_FILE" | head -1 | sed 's/.*crusoeProjectId: *//' | tr -d '"' | sed 's/#.*//')
+    if [ -z "$project_id" ] || [ "$project_id" = '""' ]; then
+        warn "crusoeProjectId is empty — set your Crusoe project ID"
+        errors=$((errors + 1))
+    fi
+
+    # Check nodeSelector has at least one label uncommented
+    local selector_count=$(grep -v '^\s*#' "$VALUES_FILE" | grep -c 'crusoe.ai/' || true)
+    if [ "$selector_count" -eq 0 ]; then
+        warn "nodeSelector.matchLabels has no labels — uncomment and set crusoe.ai/project.id"
+        errors=$((errors + 1))
+    fi
+
+    # Check thresholds are valid
+    local cordon=$(grep 'cordonThreshold:' "$VALUES_FILE" | head -1 | sed 's/.*cordonThreshold: *//' | tr -d '"' | sed 's/#.*//')
+    local action=$(grep 'actionThreshold:' "$VALUES_FILE" | head -1 | sed 's/.*actionThreshold: *//' | tr -d '"' | sed 's/#.*//')
+    if [ -z "$cordon" ]; then
+        warn "cordonThreshold is empty"
+        errors=$((errors + 1))
+    fi
+    if [ -z "$action" ]; then
+        warn "actionThreshold is empty"
+        errors=$((errors + 1))
+    fi
+
+    if [ $errors -gt 0 ]; then
+        err "Values file has $errors issue(s) — fix before deploying."
+    fi
+
+    log "Values file OK: $VALUES_FILE"
+    echo "  image.repository: $repo"
+    echo "  crusoeProjectId:   $project_id"
+    echo "  cordonThreshold:   $cordon"
+    echo "  actionThreshold:   $action"
+    echo "  vmInstanceTypeFilter: $(grep 'vmInstanceTypeFilter:' "$VALUES_FILE" | head -1 | sed 's/.*vmInstanceTypeFilter: *//' | tr -d '"' | sed 's/#.*//')"
+    echo "  action.type:       $(grep 'type:' "$VALUES_FILE" | head -1 | sed 's/.*type: *//' | tr -d '"' | sed 's/#.*//')"
+    echo "  dryRun:            $(grep 'dryRun:' "$VALUES_FILE" | head -1 | sed 's/.*dryRun: *//' | sed 's/#.*//')"
 }
 
 # ── Phases ────────────────────────────────────────────────────────
