@@ -10,12 +10,12 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/record"
 
-	"crusoe-cmk-node-remediation/internal/actions"
-	"crusoe-cmk-node-remediation/internal/config"
-	"crusoe-cmk-node-remediation/internal/constants"
-	"crusoe-cmk-node-remediation/internal/discovery"
-	"crusoe-cmk-node-remediation/internal/guardrails"
-	"crusoe-cmk-node-remediation/internal/k8s"
+	"cmk-node-remediation/internal/actions"
+	"cmk-node-remediation/internal/config"
+	"cmk-node-remediation/internal/constants"
+	"cmk-node-remediation/internal/discovery"
+	"cmk-node-remediation/internal/guardrails"
+	"cmk-node-remediation/internal/k8s"
 )
 
 // UptimeEvaluator interface for querying VM uptime.
@@ -281,11 +281,13 @@ func (m *Manager) handleRemediateNode(ctx context.Context, nodeInfo discovery.No
 		return err
 	}
 
-	m.deps.K8sClient.SetAnnotation(ctx, nodeInfo.Name, constants.AnnotationActionCompletedAt, time.Now().UTC().Format(time.RFC3339))
-
 	// 4. Uncordon (skip for vm-delete — old node is gone)
 	if m.deps.Config.Action.Type != "vm-delete" && len(m.deps.Config.Action.Steps) == 0 {
-		m.uncordonNode(ctx, nodeInfo, step.Type(), days)
+		if err := m.uncordonNode(ctx, nodeInfo, step.Type(), days); err != nil {
+			// Uncordon failed — don't set action-completed-at, so cooldown
+			// won't skip this node on the next run
+			return err
+		}
 	} else {
 		// For multi-step or vm-delete, check if the last step is vm-delete
 		isDelete := false
@@ -296,11 +298,16 @@ func (m *Manager) handleRemediateNode(ctx context.Context, nodeInfo discovery.No
 			}
 		}
 		if !isDelete {
-			m.uncordonNode(ctx, nodeInfo, step.Type(), days)
+			if err := m.uncordonNode(ctx, nodeInfo, step.Type(), days); err != nil {
+				return err
+			}
 		} else {
 			log.Printf("node %s: vm-delete completed, old node will be replaced by CMK", nodeInfo.Name)
 		}
 	}
+
+	// Set action-completed-at ONLY after successful uncordon (or vm-delete)
+	m.deps.K8sClient.SetAnnotation(ctx, nodeInfo.Name, constants.AnnotationActionCompletedAt, time.Now().UTC().Format(time.RFC3339))
 
 	// Only increment for newly remediated nodes
 	*globalActive++
@@ -309,11 +316,11 @@ func (m *Manager) handleRemediateNode(ctx context.Context, nodeInfo discovery.No
 	return nil
 }
 
-func (m *Manager) uncordonNode(ctx context.Context, nodeInfo discovery.NodeInfo, stepType string, days float64) {
+func (m *Manager) uncordonNode(ctx context.Context, nodeInfo discovery.NodeInfo, stepType string, days float64) error {
 	m.deps.K8sClient.SetLabel(ctx, nodeInfo.Name, constants.LabelRemediationPhase, string(constants.PhaseUncordoning))
 	if err := m.deps.K8sClient.Uncordon(ctx, nodeInfo.Name); err != nil {
 		log.Printf("ERROR: failed to uncordon node %s: %v", nodeInfo.Name, err)
-		return
+		return err
 	}
 	m.deps.K8sClient.RemoveTaint(ctx, nodeInfo.Name, constants.TaintMaintenance)
 	m.deps.K8sClient.RemoveTaint(ctx, nodeInfo.Name, constants.TaintScheduled)
@@ -326,6 +333,7 @@ func (m *Manager) uncordonNode(ctx context.Context, nodeInfo discovery.NodeInfo,
 		"node remediated with %s after %.1f days uptime", stepType, days)
 
 	log.Printf("node %s remediation complete (step: %s)", nodeInfo.Name, stepType)
+	return nil
 }
 
 func getAttemptAnnotation(node *corev1.Node) int {
