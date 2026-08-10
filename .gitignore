@@ -22,3 +22,5 @@ node-reboot-manager
 # OS
 .DS_Store
 Thumbs.db
+e2e/local.env
+e2e/values-generated.yaml

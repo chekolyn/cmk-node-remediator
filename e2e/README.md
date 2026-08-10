@@ -24,20 +24,20 @@ bash e2e/run-e2e.sh cleanup
 ## Configuration
 
 All settings are parameterized via environment variables with defaults
-for the `cmk-test-cluster` test cluster.
+for your test cluster.
 
 Copy `e2e/config.env` to `e2e/local.env` and customize:
 
 ```bash
 # Cluster
-CLUSTER_NAME=cmk-test-cluster
+CLUSTER_NAME=your-cluster-name
 CLUSTER_ID=your-cluster-id
 PROJECT_ID=your-project-id
-LOCATION=us-southcentral1-a
+LOCATION=your-location
 
 # Registry
-REGISTRY_URL=registry.us-southcentral1-a.ccr.crusoecloudcompute.com
-REGISTRY_REPO=crusoe-node-remediation.your-project-id
+REGISTRY_URL=your-registry-url.ccr.crusoecloudcompute.com
+REGISTRY_REPO=cmk-node-remediation.your-project-id
 IMAGE_TAG=v0.0.1
 
 # Crusoe API
@@ -56,7 +56,7 @@ Or override via env vars or command line:
 
 ```bash
 # Different cluster
-CLUSTER_NAME=example-gpu-cluster PROJECT_ID=your-project-id... bash e2e/run-e2e.sh deploy
+CLUSTER_NAME=your-cluster PROJECT_ID=your-project-id bash e2e/run-e2e.sh deploy
 
 # Different VM type filter
 VM_INSTANCE_TYPE_FILTER=b200.* bash e2e/run-e2e.sh deploy
@@ -88,10 +88,10 @@ bash e2e/run-e2e.sh deploy --api-key YOUR_KEY
 
 ```bash
 # Example: a large customer cluster
-CLUSTER_NAME=example-gpu-cluster \
+CLUSTER_NAME=your-cluster \
 CLUSTER_ID=your-cluster-id \
 PROJECT_ID=your-project-id \
-LOCATION=eu-norway1-a \
+LOCATION=your-location \
 VM_INSTANCE_TYPE_FILTER=b200.* \
 CORDON_THRESHOLD=55d \
 ACTION_THRESHOLD=60d \

@@ -1,5 +1,5 @@
 image:
-  repository: registry.your-location.ccr.crusoecloudcompute.com/crusoe-node-remediation.your-project-id
+  repository: ""  # Set to your Crusoe Container Registry URL
   tag: v0.0.1
   pullPolicy: IfNotPresent
 

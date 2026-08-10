@@ -22,11 +22,11 @@ guardrails:
 drainTimeout: 10m
 forceDrainAfterTimeout: true
 crusoeApiSecret: crusoe-api-credentials
-crusoeProjectId: your-project-id
+crusoeProjectId: test-project-id
 dryRun: false
 nodeSelector:
   matchLabels:
-    crusoe.ai/project.id: your-project-id
+    crusoe.ai/project.id: test-project-id
 `)
 
 	cfg, err := LoadFromYAML(yamlData)
