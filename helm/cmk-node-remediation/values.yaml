@@ -13,11 +13,21 @@ schedule: "0 0 * * *"
 
 # ── Node Discovery ────────────────────────────────────────────────
 # Select which nodes to manage. Match labels from your CMK cluster.
-# Common labels: crusoe.ai/project.id, crusoe.ai/nodepool.id
+# Leave empty to target all nodes, or set specific labels to filter.
+#
+# Example — target nodes in a specific project:
+#   nodeSelector:
+#     matchLabels:
+#       crusoe.ai/project.id: "your-project-id"
+#
+# Example — target a specific nodepool:
+#   nodeSelector:
+#     matchLabels:
+#       crusoe.ai/project.id: "your-project-id"
+#       crusoe.ai/nodepool.id: "your-nodepool-id"
 nodeSelector:
-  matchLabels: {}
-  # matchLabels:
-  #   crusoe.ai/project.id: "your-project-id"
+  matchLabels:
+    # crusoe.ai/project.id: "your-project-id"
 
 # Filter by VM instance type. Use regex.
 # B200 GPU nodes: "b200.*"
