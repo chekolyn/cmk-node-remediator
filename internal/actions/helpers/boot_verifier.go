@@ -81,6 +81,13 @@ func (v *BootVerifier) VerifyBootAndReady(ctx context.Context, nodeName, oldBoot
 	// Second: wait for node Ready (boot completed)
 	deadline := time.Now().Add(timeout)
 	pollInterval := 30 * time.Second
+	// Use shorter poll interval if timeout is short (for testing)
+	if timeout < pollInterval {
+		pollInterval = timeout / 3
+		if pollInterval < 100*time.Millisecond {
+			pollInterval = 100 * time.Millisecond
+		}
+	}
 
 	for time.Now().Before(deadline) {
 		select {

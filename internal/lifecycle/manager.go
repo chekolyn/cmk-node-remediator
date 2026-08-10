@@ -23,11 +23,22 @@ type UptimeEvaluator interface {
 	GetNodeStartTime(ctx context.Context, nodeName string) (time.Time, error)
 }
 
+// DrainManager interface for node draining.
+type DrainManager interface {
+	Drain(ctx context.Context, nodeName string) error
+	ForceDrain(ctx context.Context, nodeName string) error
+}
+
+// StepCreator interface for creating remediation steps.
+type StepCreator interface {
+	CreateFromConfig(cfg config.ActionConfig) (actions.Step, error)
+}
+
 // Dependencies holds all the components the manager needs.
 type Dependencies struct {
 	K8sClient    *k8s.Client
-	DrainMgr     *k8s.DrainManager
-	StepFactory  *actions.Factory
+	DrainMgr     DrainManager
+	StepFactory  StepCreator
 	UptimeEval   UptimeEvaluator
 	GuardChecker *guardrails.Checker
 	Discoverer   *discovery.Discoverer
