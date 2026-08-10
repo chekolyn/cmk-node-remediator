@@ -24,5 +24,5 @@ node-reboot-manager
 Thumbs.db
 e2e/local.env
 e2e/values-generated.yaml
-e2e/local-values.yaml
 e2e/values-generated.yaml
+e2e/values.yaml

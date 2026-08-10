@@ -14,12 +14,12 @@
 #   all         — Run build + deploy + verify in sequence
 #
 # Configuration:
-#   Copy e2e/values.yaml to e2e/local-values.yaml and customize.
-#   The local-values.yaml is gitignored — put your cluster details there.
+#   Copy e2e/example-values.yaml to e2e/values.yaml and customize.
+#   The values.yaml is gitignored — put your cluster details there.
 #
 # Examples:
 #   bash e2e/run-e2e.sh all --api-key YOUR_KEY
-#   bash e2e/run-e2e.sh deploy --values e2e/local-values.yaml --api-key YOUR_KEY
+#   bash e2e/run-e2e.sh deploy --values e2e/values.yaml --api-key YOUR_KEY
 #   bash e2e/run-e2e.sh cleanup
 
 set -euo pipefail
@@ -30,7 +30,7 @@ REPO_DIR="$(dirname "$SCRIPT_DIR")"
 CHART_DIR="$REPO_DIR/helm/cmk-node-remediation"
 NAMESPACE="cmk-node-remediation"
 RELEASE_NAME="cmk-node-remediation"
-VALUES_FILE="$SCRIPT_DIR/local-values.yaml"
+VALUES_FILE="$SCRIPT_DIR/values.yaml"
 CRUSOE_API_URL="https://api.cloud.crusoe.ai/v1alpha5"
 CRUSOE_API_KEY=""
 PHASE="all"
@@ -98,9 +98,9 @@ wait_for_job() {
 check_values_file() {
     if [ ! -f "$VALUES_FILE" ]; then
         err "Values file not found: $VALUES_FILE
-Copy e2e/values.yaml to e2e/local-values.yaml and customize:
-  cp e2e/values.yaml e2e/local-values.yaml
-Then edit local-values.yaml with your cluster details."
+Copy e2e/example-values.yaml to e2e/values.yaml and customize:
+  cp e2e/example-values.yaml e2e/values.yaml
+Then edit values.yaml with your cluster details."
     fi
     log "Using values: $VALUES_FILE"
 }
@@ -240,7 +240,7 @@ case "$PHASE" in
         echo "Usage: bash e2e/run-e2e.sh [build|deploy|verify|dry-run-off|vm-reset|cleanup|all]"
         echo "       [--api-key KEY] [--values FILE] [--namespace NS]"
         echo ""
-        echo "Setup: cp e2e/values.yaml e2e/local-values.yaml  (then edit)"
+        echo "Setup: cp e2e/example-values.yaml e2e/values.yaml  (then edit)"
         exit 1
         ;;
 esac

@@ -6,8 +6,8 @@ End-to-end tests for cmk-node-remediation.
 
 ```bash
 # 1. Copy values template and fill in your cluster details
-cp e2e/values.yaml e2e/local-values.yaml
-# Edit e2e/local-values.yaml: set image.repository, nodeSelector, crusoeProjectId
+cp e2e/example-values.yaml e2e/values.yaml
+# Edit e2e/values.yaml: set image.repository, nodeSelector, crusoeProjectId
 
 # 2. Run all phases (build + deploy + verify)
 bash e2e/run-e2e.sh all --api-key YOUR_CRUSOE_API_KEY
@@ -30,7 +30,7 @@ different `values.yaml`. The workflow is identical:
 # E2E (test cluster, fast thresholds, noop action)
 helm install cmk-node-remediation ./helm/cmk-node-remediation \
   --namespace cmk-node-remediation \
-  -f e2e/local-values.yaml
+  -f e2e/example-values.yaml
 
 # Production (real cluster, 55d/60d thresholds, vm-reset)
 helm install cmk-node-remediation ./helm/cmk-node-remediation \
@@ -42,8 +42,8 @@ helm install cmk-node-remediation ./helm/cmk-node-remediation \
 
 | File | Committed? | Purpose |
 |------|-----------|---------|
-| `e2e/values.yaml` | ✅ Yes | Template with test defaults (noop, 30m/1h, dry-run) |
-| `e2e/local-values.yaml` | ❌ No (gitignored) | Your cluster details — copy from template |
+| `e2e/example-values.yaml` | ✅ Yes | Template with test defaults (noop, 30m/1h, dry-run) |
+| `e2e/values.yaml` | ❌ No (gitignored) | Your cluster details — copy from template |
 | `e2e/run-e2e.sh` | ✅ Yes | Test script — 6 phases, all idempotent |
 
 ## Setup
@@ -51,10 +51,10 @@ helm install cmk-node-remediation ./helm/cmk-node-remediation \
 Copy the values template and fill in your cluster details:
 
 ```bash
-cp e2e/values.yaml e2e/local-values.yaml
+cp e2e/example-values.yaml e2e/values.yaml
 ```
 
-Edit `e2e/local-values.yaml`:
+Edit `e2e/values.yaml`:
 
 ```yaml
 image:
@@ -85,5 +85,5 @@ crusoeProjectId: "your-project-id"
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--api-key KEY` | Crusoe API key for K8s secret | (required for deploy) |
-| `--values FILE` | Path to values file | `e2e/local-values.yaml` |
+| `--values FILE` | Path to values file | `e2e/values.yaml` |
 | `--namespace NS` | Kubernetes namespace | `cmk-node-remediation` |
