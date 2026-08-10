@@ -146,6 +146,14 @@ type Config struct {
 	DryRun                  bool               `yaml:"dryRun"`
 	SlackWebhookURL         string             `yaml:"slackWebhookUrl,omitempty"`
 	NodeSelector            NodeSelectorConfig `yaml:"nodeSelector,omitempty"`
+	NodePriority            string             `yaml:"nodePriority"` // highest-uptime | lowest-uptime | none
+}
+
+// ValidNodePriority lists the supported node priority strategies.
+var ValidNodePriority = map[string]bool{
+	"highest-uptime": true,
+	"lowest-uptime":  true,
+	"none":           true,
 }
 
 // ValidStepTypes lists the supported remediation step types.
@@ -184,6 +192,7 @@ func defaultConfig() *Config {
 		DrainTimeout:           10 * time.Minute,
 		ForceDrainAfterTimeout: true,
 		DryRun:                 false,
+		NodePriority:           "highest-uptime",
 	}
 }
 
@@ -196,6 +205,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Cooldown < 0 {
 		return fmt.Errorf("cooldown must be non-negative")
+	}
+	if c.NodePriority != "" && !ValidNodePriority[c.NodePriority] {
+		return fmt.Errorf("invalid nodePriority %q: must be one of highest-uptime, lowest-uptime, none", c.NodePriority)
 	}
 	if c.CrusoeAPISecret == "" {
 		return fmt.Errorf("crusoeApiSecret must be set")

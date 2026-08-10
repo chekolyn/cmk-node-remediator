@@ -1045,3 +1045,214 @@ func TestMultiplePoolsPerPoolGuardrailIndependent(t *testing.T) {
 		t.Errorf("pool-b cordoned = %d, want 1 (perPoolMaxCordoned=1)", poolBCordoned)
 	}
 }
+
+// --- TDD: Node priority tests ---
+
+// mockUptimeEvaluatorMulti returns different uptimes per node name.
+type mockUptimeEvaluatorMulti struct {
+	startTimes map[string]time.Time
+}
+
+func (m *mockUptimeEvaluatorMulti) GetNodeStartTime(ctx context.Context, nodeName string) (time.Time, error) {
+	if t, ok := m.startTimes[nodeName]; ok {
+		return t, nil
+	}
+	return time.Now(), nil
+}
+
+// TDD Test: highest-uptime priority — node with most uptime is cordoned first
+func TestHighestUptimePriorityCordonsHighestFirst(t *testing.T) {
+	// 3 nodes with different uptimes, perPoolMaxCordoned=1
+	// Only the highest-uptime node should be cordoned
+	now := time.Now()
+	clientset := fake.NewSimpleClientset(
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-low", // 30m uptime
+				Labels: map[string]string{
+					constants.LabelNodepoolID:   "pool-a",
+					constants.LabelInstanceID:   "vm-low",
+					constants.LabelProjectID:    "proj-1",
+					constants.LabelInstanceType: "b200-180gb-sxm-ib.8x",
+				},
+			},
+			Spec: corev1.NodeSpec{Unschedulable: false},
+		},
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-high", // 2h uptime
+				Labels: map[string]string{
+					constants.LabelNodepoolID:   "pool-a",
+					constants.LabelInstanceID:   "vm-high",
+					constants.LabelProjectID:    "proj-1",
+					constants.LabelInstanceType: "b200-180gb-sxm-ib.8x",
+				},
+			},
+			Spec: corev1.NodeSpec{Unschedulable: false},
+		},
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-mid", // 1h uptime
+				Labels: map[string]string{
+					constants.LabelNodepoolID:   "pool-a",
+					constants.LabelInstanceID:   "vm-mid",
+					constants.LabelProjectID:    "proj-1",
+					constants.LabelInstanceType: "b200-180gb-sxm-ib.8x",
+				},
+			},
+			Spec: corev1.NodeSpec{Unschedulable: false},
+		},
+	)
+
+	k8sClient := k8s.NewClient(clientset, nil)
+	cfg := &config.Config{
+		CordonThreshold:      config.Duration(30 * time.Minute),
+		ActionThreshold:      config.Duration(1 * time.Hour),
+		Cooldown:             config.Duration(15 * time.Minute),
+		DryRun:               false,
+		VMInstanceTypeFilter: "b200.*",
+		Action:               config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:           config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 1},
+		DrainTimeout:         1 * time.Second,
+		ForceDrainAfterTimeout: true,
+		CrusoeAPISecret:      "test-secret",
+		CrusoeProjectID:      "proj-1",
+		NodeSelector:         config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		NodePriority:         "highest-uptime",
+	}
+
+	drainMgr := &mockDrainMgr{}
+	stepFactory := &mockStepCreator{step: &actions.NoopStep{}}
+
+	deps := Dependencies{
+		K8sClient:    k8sClient,
+		DrainMgr:     drainMgr,
+		StepFactory:  stepFactory,
+		UptimeEval: &mockUptimeEvaluatorMulti{
+			startTimes: map[string]time.Time{
+				"node-low":  now.Add(-30 * time.Minute),
+				"node-high": now.Add(-2 * time.Hour),
+				"node-mid":  now.Add(-1 * time.Hour),
+			},
+		},
+		GuardChecker: guardrails.NewChecker(cfg.Guardrails),
+		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
+		Config:       cfg,
+		Recorder:     record.NewFakeRecorder(20),
+	}
+
+	mgr := NewManager(deps)
+	err := mgr.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	// node-high (2h uptime) should be cordoned — it's above actionThreshold (1h)
+	// and has the highest uptime, so it gets the 1 perPoolMaxCordoned slot
+	nodeHigh, _ := clientset.CoreV1().Nodes().Get(context.Background(), "node-high", metav1.GetOptions{})
+	if nodeHigh.Labels[constants.LabelRemediationPhase] != string(constants.PhaseMonitored) {
+		t.Errorf("node-high should be remediated (highest uptime, above actionThreshold), phase = %q",
+			nodeHigh.Labels[constants.LabelRemediationPhase])
+	}
+
+	// node-mid (1h uptime) is also above actionThreshold but guardrail blocks it
+	nodeMid, _ := clientset.CoreV1().Nodes().Get(context.Background(), "node-mid", metav1.GetOptions{})
+	if nodeMid.Spec.Unschedulable {
+		t.Error("node-mid should NOT be cordoned — guardrail exceeded (perPoolMaxCordoned=1, node-high took the slot)")
+	}
+
+	// node-low (30m uptime) is below cordonThreshold — should not be cordoned
+	nodeLow, _ := clientset.CoreV1().Nodes().Get(context.Background(), "node-low", metav1.GetOptions{})
+	if nodeLow.Spec.Unschedulable {
+		t.Error("node-low should NOT be cordoned — below cordonThreshold")
+	}
+}
+
+// TDD Test: lowest-uptime priority — node with least uptime is processed first
+func TestLowestUptimePriorityProcessesLowestFirst(t *testing.T) {
+	// 2 nodes above actionThreshold, perPoolMaxCordoned=1
+	// With lowest-uptime, the one with LESS uptime should be processed first
+	now := time.Now()
+	clientset := fake.NewSimpleClientset(
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-65d", // 65 days uptime
+				Labels: map[string]string{
+					constants.LabelNodepoolID:   "pool-a",
+					constants.LabelInstanceID:   "vm-65d",
+					constants.LabelProjectID:    "proj-1",
+					constants.LabelInstanceType: "b200-180gb-sxm-ib.8x",
+				},
+			},
+			Spec: corev1.NodeSpec{Unschedulable: false},
+		},
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-61d", // 61 days uptime
+				Labels: map[string]string{
+					constants.LabelNodepoolID:   "pool-a",
+					constants.LabelInstanceID:   "vm-61d",
+					constants.LabelProjectID:    "proj-1",
+					constants.LabelInstanceType: "b200-180gb-sxm-ib.8x",
+				},
+			},
+			Spec: corev1.NodeSpec{Unschedulable: false},
+		},
+	)
+
+	k8sClient := k8s.NewClient(clientset, nil)
+	cfg := &config.Config{
+		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
+		ActionThreshold:      config.Duration(60 * 24 * time.Hour),
+		Cooldown:             config.Duration(7 * 24 * time.Hour),
+		DryRun:               false,
+		VMInstanceTypeFilter: "b200.*",
+		Action:               config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:           config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 1},
+		DrainTimeout:         1 * time.Second,
+		ForceDrainAfterTimeout: true,
+		CrusoeAPISecret:      "test-secret",
+		CrusoeProjectID:      "proj-1",
+		NodeSelector:         config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		NodePriority:         "lowest-uptime",
+	}
+
+	drainMgr := &mockDrainMgr{}
+	stepFactory := &mockStepCreator{step: &actions.NoopStep{}}
+
+	deps := Dependencies{
+		K8sClient:    k8sClient,
+		DrainMgr:     drainMgr,
+		StepFactory:  stepFactory,
+		UptimeEval: &mockUptimeEvaluatorMulti{
+			startTimes: map[string]time.Time{
+				"node-65d": now.Add(-65 * 24 * time.Hour),
+				"node-61d": now.Add(-61 * 24 * time.Hour),
+			},
+		},
+		GuardChecker: guardrails.NewChecker(cfg.Guardrails),
+		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
+		Config:       cfg,
+		Recorder:     record.NewFakeRecorder(20),
+	}
+
+	mgr := NewManager(deps)
+	err := mgr.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	// With lowest-uptime, node-61d (less uptime) should be processed first
+	// and take the 1 perPoolMaxCordoned slot
+	node61d, _ := clientset.CoreV1().Nodes().Get(context.Background(), "node-61d", metav1.GetOptions{})
+	if node61d.Labels[constants.LabelRemediationPhase] != string(constants.PhaseMonitored) {
+		t.Errorf("node-61d should be remediated (lowest uptime, processed first), phase = %q",
+			node61d.Labels[constants.LabelRemediationPhase])
+	}
+
+	// node-65d should be blocked by guardrail
+	node65d, _ := clientset.CoreV1().Nodes().Get(context.Background(), "node-65d", metav1.GetOptions{})
+	if node65d.Spec.Unschedulable {
+		t.Error("node-65d should NOT be cordoned — guardrail exceeded (perPoolMaxCordoned=1, node-61d took the slot)")
+	}
+}

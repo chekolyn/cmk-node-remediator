@@ -104,6 +104,13 @@ guardrails:
 drainTimeout: 10m
 forceDrainAfterTimeout: true
 
+# ── Node Priority ─────────────────────────────────────────────
+# When guardrails limit how many nodes can be processed, which nodes go first?
+#   highest-uptime — process nodes with most uptime first (default)
+#   lowest-uptime  — process nodes with least uptime first
+#   none            — process in discovery order
+nodePriority: highest-uptime
+
 # ── Crusoe API ───────────────────────────────────────────────────
 # Create a K8s secret with your Crusoe API credentials BEFORE installing:
 #   kubectl create secret generic crusoe-api-credentials \

@@ -39,6 +39,7 @@ data:
       {{- end }}
     drainTimeout: "{{ .Values.drainTimeout }}"
     forceDrainAfterTimeout: {{ .Values.forceDrainAfterTimeout }}
+    nodePriority: "{{ .Values.nodePriority }}"
     crusoeApiSecret: "{{ .Values.crusoeApiSecret }}"
     crusoeProjectId: "{{ .Values.crusoeProjectId }}"
     dryRun: {{ .Values.dryRun }}

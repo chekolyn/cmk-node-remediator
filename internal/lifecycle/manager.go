@@ -82,8 +82,14 @@ func (m *Manager) Run(ctx context.Context) error {
 		poolActive := m.countActiveNodesInPool(ctx, group.NodepoolID)
 		poolTotal := len(group.Nodes)
 
+		// Query uptime for all nodes in this pool before processing
+		type nodeWithUptime struct {
+			info   discovery.NodeInfo
+			uptime time.Duration
+		}
+		var nodesWithUptime []nodeWithUptime
+
 		for _, nodeInfo := range group.Nodes {
-			// Query uptime from K8s stats summary API
 			startTime, err := m.deps.UptimeEval.GetNodeStartTime(ctx, nodeInfo.Name)
 			if err != nil {
 				log.Printf("skipping node %s: failed to get uptime: %v", nodeInfo.Name, err)
@@ -98,15 +104,48 @@ func (m *Manager) Run(ctx context.Context) error {
 				continue
 			}
 
-			action := ClassifyUptime(uptime, time.Duration(m.deps.Config.CordonThreshold), time.Duration(m.deps.Config.ActionThreshold))
+			nodesWithUptime = append(nodesWithUptime, nodeWithUptime{info: nodeInfo, uptime: uptime})
+		}
+
+		// Sort nodes by priority
+		prioritizer, err := GetPrioritizer(m.deps.Config.NodePriority)
+		if err != nil {
+			log.Printf("warning: %v, using default (highest-uptime)", err)
+			prioritizer = highestUptime{}
+		}
+
+		// Convert to NodeWithUptime for sorting
+		nodesForSort := make([]NodeWithUptime, len(nodesWithUptime))
+		for i, nwu := range nodesWithUptime {
+			nodesForSort[i] = NodeWithUptime{
+				Name:       nwu.info.Name,
+				InstanceID: nwu.info.InstanceID,
+				Uptime:     nwu.uptime,
+			}
+		}
+		prioritizer.Sort(nodesForSort)
+
+		if m.deps.Config.NodePriority != "" && m.deps.Config.NodePriority != "none" {
+			log.Printf("pool %s: processing %d nodes by %s priority", group.NodepoolID, len(nodesForSort), prioritizer.Name())
+		}
+
+		// Build a lookup from sorted names back to original nodeWithUptime
+		lookup := make(map[string]nodeWithUptime, len(nodesWithUptime))
+		for _, nwu := range nodesWithUptime {
+			lookup[nwu.info.Name] = nwu
+		}
+
+		for _, nfs := range nodesForSort {
+			nwu := lookup[nfs.Name]
+			action := ClassifyUptime(nwu.uptime, time.Duration(m.deps.Config.CordonThreshold), time.Duration(m.deps.Config.ActionThreshold))
 
 			switch action {
 			case ActionNone:
-				m.handleMonitoredNode(ctx, nodeInfo)
+				m.handleMonitoredNode(ctx, nwu.info)
 			case ActionCordon:
-				m.handleCordonNode(ctx, nodeInfo, uptime, &globalActive, &poolActive, globalTotal, poolTotal)
+				m.handleCordonNode(ctx, nwu.info, nwu.uptime, &globalActive, &poolActive, globalTotal, poolTotal)
 			case ActionRemediate:
-				if err := m.handleRemediateNode(ctx, nodeInfo, uptime, &globalActive, &poolActive, globalTotal, poolTotal); err != nil {
+				if err := m.handleRemediateNode(ctx, nwu.info, nwu.uptime, &globalActive, &poolActive, globalTotal, poolTotal); err != nil {
 					failedCount++
 				}
 			}
