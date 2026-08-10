@@ -9,9 +9,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
-	"crusoe-cmk-node-remediation/internal/actions/helpers"
-	"crusoe-cmk-node-remediation/internal/crusoe"
-	"crusoe-cmk-node-remediation/internal/k8s"
+	"cmk-node-remediation/internal/actions/helpers"
+	"cmk-node-remediation/internal/crusoe"
+	"cmk-node-remediation/internal/k8s"
 )
 
 func TestNoopStep(t *testing.T) {
@@ -34,18 +34,11 @@ func TestVMResetStepType(t *testing.T) {
 	}
 }
 
-func TestVMResetStepAlreadyReady(t *testing.T) {
-	// Node is already Ready — step should skip the API call
-	clientset := fake.NewSimpleClientset(
-		&corev1.Node{
-			ObjectMeta: metav1.ObjectMeta{Name: "node-1"},
-			Status: corev1.NodeStatus{
-				Conditions: []corev1.NodeCondition{
-					{Type: corev1.NodeReady, Status: corev1.ConditionTrue},
-				},
-			},
-		},
-	)
+func TestVMResetStepRequiresNode(t *testing.T) {
+	// VMResetStep should NOT skip based on Ready status — it always proceeds.
+	// The cooldown check in the lifecycle manager handles "already remediated".
+	// This test verifies the step fails gracefully if the node doesn't exist.
+	clientset := fake.NewSimpleClientset() // no nodes
 	k8sClient := k8s.NewClient(clientset, nil)
 	crusoeClient := crusoe.NewClient("http://localhost", "key", "proj-1")
 
@@ -57,10 +50,10 @@ func TestVMResetStepAlreadyReady(t *testing.T) {
 		maxRetries:   3,
 	}
 
-	nodeInfo := NodeInfo{Name: "node-1", InstanceID: "vm-001"}
+	nodeInfo := NodeInfo{Name: "nonexistent-node", InstanceID: "vm-001"}
 	err := step.Run(context.Background(), nodeInfo, nil)
-	if err != nil {
-		t.Fatalf("Run should succeed when node is already Ready: %v", err)
+	if err == nil {
+		t.Fatal("Run should fail when node doesn't exist")
 	}
 }
 
