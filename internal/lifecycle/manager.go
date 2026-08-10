@@ -293,27 +293,22 @@ func (m *Manager) handleRemediateNode(ctx context.Context, nodeInfo discovery.No
 	}
 
 	// 4. Uncordon (skip for vm-delete — old node is gone)
-	if m.deps.Config.Action.Type != "vm-delete" && len(m.deps.Config.Action.Steps) == 0 {
+	// Determine if the last action is vm-delete (single or multi-step)
+	isDeleteAction := false
+	if len(m.deps.Config.Action.Steps) > 0 {
+		lastStep := m.deps.Config.Action.Steps[len(m.deps.Config.Action.Steps)-1]
+		isDeleteAction = lastStep.Type == "vm-delete"
+	} else if m.deps.Config.Action.Type == "vm-delete" {
+		isDeleteAction = true
+	}
+
+	if isDeleteAction {
+		log.Printf("node %s: vm-delete completed, old node will be replaced by CMK", nodeInfo.Name)
+	} else {
 		if err := m.uncordonNode(ctx, nodeInfo, step.Type(), days); err != nil {
 			// Uncordon failed — don't set action-completed-at, so cooldown
 			// won't skip this node on the next run
 			return err
-		}
-	} else {
-		// For multi-step or vm-delete, check if the last step is vm-delete
-		isDelete := false
-		if len(m.deps.Config.Action.Steps) > 0 {
-			lastStep := m.deps.Config.Action.Steps[len(m.deps.Config.Action.Steps)-1]
-			if lastStep.Type == "vm-delete" {
-				isDelete = true
-			}
-		}
-		if !isDelete {
-			if err := m.uncordonNode(ctx, nodeInfo, step.Type(), days); err != nil {
-				return err
-			}
-		} else {
-			log.Printf("node %s: vm-delete completed, old node will be replaced by CMK", nodeInfo.Name)
 		}
 	}
 

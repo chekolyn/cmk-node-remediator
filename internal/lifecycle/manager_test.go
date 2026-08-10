@@ -608,3 +608,66 @@ func TestMaxRetriesExceededLeavesCordoned(t *testing.T) {
 		t.Error("Drain should not be called when max retries exceeded")
 	}
 }
+
+// TDD Test 7: vm-delete action → node is NOT uncordoned (old node is gone)
+func TestVMDeleteDoesNotUncordon(t *testing.T) {
+	clientset := fake.NewSimpleClientset(
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-1",
+				Labels: map[string]string{
+					constants.LabelNodepoolID:   "pool-a",
+					constants.LabelInstanceID:   "vm-001",
+					constants.LabelProjectID:    "proj-1",
+					constants.LabelInstanceType: "b200-180gb-sxm-ib.8x",
+				},
+			},
+			Spec: corev1.NodeSpec{Unschedulable: false},
+		},
+	)
+
+	k8sClient := k8s.NewClient(clientset, nil)
+	cfg := &config.Config{
+		CordonDays:             55,
+		ActionDays:             60,
+		DryRun:                 false,
+		VMInstanceTypeFilter:   "b200.*",
+		Action:                 config.ActionConfig{Type: "vm-delete", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:             config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+		DrainTimeout:           1 * time.Second,
+		ForceDrainAfterTimeout: true,
+		CrusoeAPISecret:        "test-secret",
+		CrusoeProjectID:        "proj-1",
+		NodeSelector:           config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+	}
+
+	drainMgr := &mockDrainMgr{}
+	stepFactory := &mockStepCreator{step: &actions.NoopStep{}}
+
+	deps := Dependencies{
+		K8sClient:    k8sClient,
+		DrainMgr:     drainMgr,
+		StepFactory:  stepFactory,
+		UptimeEval:   &mockUptimeEvaluator{startTime: time.Now().AddDate(0, 0, -61)},
+		GuardChecker: guardrails.NewChecker(cfg.Guardrails),
+		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
+		Config:       cfg,
+		Recorder:     record.NewFakeRecorder(20),
+	}
+
+	mgr := NewManager(deps)
+	err := mgr.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	// Node should still be cordoned — vm-delete doesn't uncordon
+	node, _ := clientset.CoreV1().Nodes().Get(context.Background(), "node-1", metav1.GetOptions{})
+	if !node.Spec.Unschedulable {
+		t.Error("node should remain cordoned after vm-delete (old node is gone, replacement handled by CMK)")
+	}
+	// action-completed-at SHOULD be set (delete succeeded)
+	if node.Annotations[constants.AnnotationActionCompletedAt] == "" {
+		t.Error("action-completed-at should be set after vm-delete")
+	}
+}

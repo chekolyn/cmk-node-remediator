@@ -10,6 +10,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 
 	"cmk-node-remediation/internal/actions/helpers"
+	"cmk-node-remediation/internal/config"
 	"cmk-node-remediation/internal/crusoe"
 	"cmk-node-remediation/internal/k8s"
 )
@@ -120,5 +121,77 @@ func TestBootVerifierCaptureBootID(t *testing.T) {
 	}
 	if bootID != "boot-abc" {
 		t.Errorf("bootID = %q, want boot-abc", bootID)
+	}
+}
+
+// TDD Test: CreateFromConfig with multi-step builds Steps composite
+func TestCreateFromConfigMultiStep(t *testing.T) {
+	clientset := fake.NewSimpleClientset()
+	k8sClient := k8s.NewClient(clientset, nil)
+	crusoeClient := crusoe.NewClient("http://localhost", "key", "proj-1")
+	factory := NewFactory(k8sClient, crusoeClient)
+
+	cfg := config.ActionConfig{
+		MaxRetries: 3,
+		Steps: []config.ActionStepConfig{
+			{Type: "vm-stop", Timeout: 5 * time.Minute},
+			{Type: "vm-delete", Timeout: 30 * time.Minute, Wait: 2 * time.Minute},
+		},
+	}
+
+	step, err := factory.CreateFromConfig(cfg)
+	if err != nil {
+		t.Fatalf("CreateFromConfig failed: %v", err)
+	}
+
+	if step.Type() != "steps" {
+		t.Errorf("step type = %q, want steps", step.Type())
+	}
+
+	// Verify it's a Steps composite with 2 sub-steps
+	steps, ok := step.(*Steps)
+	if !ok {
+		t.Fatalf("expected *Steps, got %T", step)
+	}
+	if len(steps.steps) != 2 {
+		t.Fatalf("expected 2 sub-steps, got %d", len(steps.steps))
+	}
+	if steps.steps[0].Type() != "vm-stop" {
+		t.Errorf("step 0 type = %q, want vm-stop", steps.steps[0].Type())
+	}
+	if steps.steps[1].Type() != "vm-delete" {
+		t.Errorf("step 1 type = %q, want vm-delete", steps.steps[1].Type())
+	}
+	if len(steps.waitsBetween) != 2 {
+		t.Fatalf("expected 2 wait entries, got %d", len(steps.waitsBetween))
+	}
+	if steps.waitsBetween[0] != 0 {
+		t.Errorf("wait 0 = %v, want 0", steps.waitsBetween[0])
+	}
+	if steps.waitsBetween[1] != 2*time.Minute {
+		t.Errorf("wait 1 = %v, want 2m", steps.waitsBetween[1])
+	}
+}
+
+// TDD Test: CreateFromConfig with single step returns leaf Step
+func TestCreateFromConfigSingleStep(t *testing.T) {
+	clientset := fake.NewSimpleClientset()
+	k8sClient := k8s.NewClient(clientset, nil)
+	crusoeClient := crusoe.NewClient("http://localhost", "key", "proj-1")
+	factory := NewFactory(k8sClient, crusoeClient)
+
+	cfg := config.ActionConfig{
+		Type:       "noop",
+		Timeout:    30 * time.Second,
+		MaxRetries: 3,
+	}
+
+	step, err := factory.CreateFromConfig(cfg)
+	if err != nil {
+		t.Fatalf("CreateFromConfig failed: %v", err)
+	}
+
+	if step.Type() != "noop" {
+		t.Errorf("step type = %q, want noop", step.Type())
 	}
 }
