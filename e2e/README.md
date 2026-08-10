@@ -1,84 +1,103 @@
 # E2E Tests
 
-End-to-end tests for cmk-node-remediation on the test CMK cluster
-`cmk-test-cluster`.
+End-to-end tests for cmk-node-remediation.
 
-## Prerequisites
+## Quick Start
 
-- Docker running
-- `kubectl` configured for `cmk-test-cluster`
-- `crusoe` CLI configured
-- `helm` installed
-
-## Test Phases
-
-### Phase 1: Build and push container image
 ```bash
+# 1. Copy config and set your API key
+cp e2e/config.env e2e/local.env
+# Edit local.env: set CRUSOE_API_KEY
+
+# 2. Run all phases (build + deploy + verify)
+bash e2e/run-e2e.sh all
+
+# 3. Or run individual phases
 bash e2e/run-e2e.sh build
-```
-
-### Phase 2: Deploy in dry-run mode
-```bash
-bash e2e/run-e2e.sh deploy
-```
-Installs the Helm chart with `dryRun=true` and `noop` action. No changes to nodes.
-
-### Phase 3: Verify node discovery
-```bash
+bash e2e/run-e2e.sh deploy --api-key YOUR_KEY
 bash e2e/run-e2e.sh verify
-```
-Checks logs for correct node targeting, events, and labels.
-
-### Phase 4: Dry-run off (noop action)
-```bash
 bash e2e/run-e2e.sh dry-run-off
-```
-Upgrades to `dryRun=false` with `noop` action. Will cordon/drain/uncordon nodes
-but won't call Crusoe API.
-
-### Phase 5: Real VM reset
-```bash
 bash e2e/run-e2e.sh vm-reset
-```
-Upgrades to `vm-reset` action. Will actually call Crusoe API to reset VMs.
-**Only run after Phase 4 is verified.**
-
-### Phase 6: Cleanup
-```bash
 bash e2e/run-e2e.sh cleanup
 ```
-Uninstalls Helm chart and uncordons any managed nodes.
 
-### All phases (build + deploy + verify)
+## Configuration
+
+All settings are parameterized via environment variables with defaults
+for the `cmk-test-cluster` test cluster.
+
+Copy `e2e/config.env` to `e2e/local.env` and customize:
+
 ```bash
-bash e2e/run-e2e.sh all
+# Cluster
+CLUSTER_NAME=cmk-test-cluster
+CLUSTER_ID=your-cluster-id
+PROJECT_ID=your-project-id
+LOCATION=us-southcentral1-a
+
+# Registry
+REGISTRY_URL=registry.us-southcentral1-a.ccr.crusoecloudcompute.com
+REGISTRY_REPO=crusoe-node-remediation.your-project-id
+IMAGE_TAG=v0.0.1
+
+# Crusoe API
+CRUSOE_API_URL=https://api.cloud.crusoe.ai/v1alpha5
+CRUSOE_API_KEY=  # SET THIS
+
+# Test thresholds (fast for testing)
+VM_INSTANCE_TYPE_FILTER=c1a.*
+CORDON_THRESHOLD=30m
+ACTION_THRESHOLD=1h
+COOLDOWN=15m
+SCHEDULE=*/5 * * * *
 ```
 
-## Values Files
+Or override via env vars or command line:
 
-| File | Description |
-|------|-------------|
-| `values-test-cluster.yaml` | Dry-run mode, noop action, every 5 min |
-| `values-test-cluster-dry-run-off.yaml` | dryRun=false, noop action, every 5 min |
-| `values-test-cluster-vm-reset.yaml` | dryRun=false, vm-reset action, every 10 min |
+```bash
+# Different cluster
+CLUSTER_NAME=example-gpu-cluster PROJECT_ID=your-project-id... bash e2e/run-e2e.sh deploy
 
-## Test Cluster Details
+# Different VM type filter
+VM_INSTANCE_TYPE_FILTER=b200.* bash e2e/run-e2e.sh deploy
 
-- **Cluster:** `cmk-test-cluster`
-- **Project ID:** `your-project-id`
-- **Nodepool:** `your-nodepool-id`
-- **VM type:** `c1a.2x` (CPU nodes, not B200)
-- **Nodes:** 5
+# Pass API key via flag
+bash e2e/run-e2e.sh deploy --api-key YOUR_KEY
+```
 
-## Key differences from production
+## Phases
 
-| Setting | Test | Production |
-|---------|------|------------|
-| `vmInstanceTypeFilter` | `c1a.*` | `b200.*` |
-| `cordonDays` | 1 | 55 |
-| `actionDays` | 2 | 60 |
-| `cooldownDays` | 1 | 7 |
-| `schedule` | `*/5 * * * *` | `0 0 * * *` |
-| `action.type` | `noop` → `vm-reset` | `vm-reset` |
-| `globalMaxCordoned` | 2 | 5 |
-| `perPoolMaxCordoned` | 1 | 2 |
+| Phase | Command | What it does | Idempotent? |
+|-------|---------|-------------|-------------|
+| build | `bash e2e/run-e2e.sh build` | Build + push container image | ✅ Yes |
+| deploy | `bash e2e/run-e2e.sh deploy` | Create secret + install Helm (dry-run) | ✅ Yes |
+| verify | `bash e2e/run-e2e.sh verify` | Check logs, events, labels | ✅ Yes (read-only) |
+| dry-run-off | `bash e2e/run-e2e.sh dry-run-off` | Upgrade to dryRun=false (noop) | ✅ Yes |
+| vm-reset | `bash e2e/run-e2e.sh vm-reset` | Real VM reset (interactive confirm) | ✅ Yes |
+| cleanup | `bash e2e/run-e2e.sh cleanup` | Uninstall + uncordon nodes | ✅ Yes |
+| all | `bash e2e/run-e2e.sh all` | build + deploy + verify | ✅ Yes |
+
+## Idempotency
+
+- **Secret**: `kubectl create secret --dry-run=client -o yaml | kubectl apply -f -` — creates or updates
+- **Helm**: `helm upgrade --install` — installs or upgrades
+- **Cleanup**: uncordons nodes, removes labels/taints, deletes namespace
+- **Values**: generated from env vars, no hardcoded files to manage
+
+## Using with a Different Cluster
+
+```bash
+# Example: a large customer cluster
+CLUSTER_NAME=example-gpu-cluster \
+CLUSTER_ID=your-cluster-id \
+PROJECT_ID=your-project-id \
+LOCATION=eu-norway1-a \
+VM_INSTANCE_TYPE_FILTER=b200.* \
+CORDON_THRESHOLD=55d \
+ACTION_THRESHOLD=60d \
+COOLDOWN=7d \
+SCHEDULE="0 0 * * *" \
+GLOBAL_MAX_CORDONED=5 \
+PER_POOL_MAX_CORDONED=2 \
+bash e2e/run-e2e.sh deploy --api-key YOUR_KEY
+```
