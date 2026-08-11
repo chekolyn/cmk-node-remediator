@@ -53,7 +53,7 @@ func TestRunDryRunNoChanges(t *testing.T) {
 		NodeSelector:         config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
-	crusoeClient := crusoe.NewClient("http://localhost", "key", "proj-1")
+	crusoeClient := crusoe.NewClient("http://localhost", "test-access", "test-secret", "proj-1")
 	stepFactory := actions.NewFactory(k8sClient, crusoeClient)
 
 	deps := Dependencies{
@@ -109,7 +109,7 @@ func TestRunCordonsNodeAt55Days(t *testing.T) {
 		NodeSelector:         config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
-	crusoeClient := crusoe.NewClient("http://localhost", "key", "proj-1")
+	crusoeClient := crusoe.NewClient("http://localhost", "test-access", "test-secret", "proj-1")
 	stepFactory := actions.NewFactory(k8sClient, crusoeClient)
 
 	deps := Dependencies{
@@ -197,7 +197,7 @@ func TestGuardrailExceededSkipsCordon(t *testing.T) {
 		NodeSelector:         config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
-	crusoeClient := crusoe.NewClient("http://localhost", "key", "proj-1")
+	crusoeClient := crusoe.NewClient("http://localhost", "test-access", "test-secret", "proj-1")
 	stepFactory := actions.NewFactory(k8sClient, crusoeClient)
 
 	deps := Dependencies{

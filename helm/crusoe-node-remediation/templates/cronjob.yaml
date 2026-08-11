@@ -78,11 +78,16 @@ spec:
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.namespace
-                - name: CRUSOE_API_KEY
+                - name: CRUSOE_ACCESS_KEY
                   valueFrom:
                     secretKeyRef:
                       name: {{ .Values.crusoeApiSecret }}
-                      key: api-key
+                      key: access-key
+                - name: CRUSOE_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.crusoeApiSecret }}
+                      key: secret-key
                 - name: CRUSOE_API_URL
                   valueFrom:
                     secretKeyRef:

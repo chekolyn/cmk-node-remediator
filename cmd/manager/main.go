@@ -69,10 +69,14 @@ func main() {
 	}
 
 	// 2. Load Crusoe API credentials from mounted Secret
-	apiKey := os.Getenv("CRUSOE_API_KEY")
+	accessKey := os.Getenv("CRUSOE_ACCESS_KEY")
+	secretKey := os.Getenv("CRUSOE_SECRET_KEY")
 	apiURL := os.Getenv("CRUSOE_API_URL")
-	if apiKey == "" || apiURL == "" {
-		log.Fatalf("CRUSOE_API_KEY and CRUSOE_API_URL must be set")
+	if accessKey == "" || secretKey == "" {
+		log.Fatalf("CRUSOE_ACCESS_KEY and CRUSOE_SECRET_KEY must be set")
+	}
+	if apiURL == "" {
+		apiURL = "https://api.cloud.crusoe.ai/v1alpha5"
 	}
 	projectID := cfg.CrusoeProjectID
 	if projectID == "" {
@@ -87,8 +91,15 @@ func main() {
 
 	k8sClient := k8s.NewClient(k8sClientset, nil)
 
-	// 4. Create Crusoe API client
-	crusoeClient := crusoe.NewClient(apiURL, apiKey, projectID)
+	// 4. Create Crusoe API client (HMAC auth with access/secret key pair)
+	crusoeClient := crusoe.NewClient(apiURL, accessKey, secretKey, projectID)
+
+	// 4a. Verify Crusoe API access — fail fast if credentials are invalid
+	log.Println("verifying Crusoe API access...")
+	if err := crusoeClient.VerifyAccess(context.Background()); err != nil {
+		log.Fatalf("%v", err)
+	}
+	log.Println("Crusoe API access verified")
 
 	// 5. Create step factory
 	stepFactory := actions.NewFactory(k8sClient, crusoeClient)

@@ -113,10 +113,12 @@ forceAfterEvictionFailure: true
 #   none            — process in discovery order
 
 # ── Crusoe API ───────────────────────────────────────────────────
-# Create a K8s secret with your Crusoe API credentials BEFORE installing:
+# Create a K8s secret with your Crusoe API credentials BEFORE installing.
+# The SDK uses HMAC auth with an access/secret key pair (same as the Crusoe CLI):
 #   kubectl create secret generic crusoe-api-credentials \
 #     --namespace crusoe-node-remediation \
-#     --from-literal=api-key=YOUR_API_KEY \
+#     --from-literal=access-key=YOUR_ACCESS_KEY \
+#     --from-literal=secret-key=YOUR_SECRET_KEY \
 #     --from-literal=api-url=https://api.cloud.crusoe.ai/v1alpha5
 crusoeApiSecret: crusoe-api-credentials
 crusoeProjectId: ""

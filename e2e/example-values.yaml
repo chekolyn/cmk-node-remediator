@@ -24,8 +24,19 @@ instanceTypeFilter: "c1a.*"
 # Fast thresholds for testing (minutes, not days)
 cordonThreshold: 30m
 remediationThreshold: 1h
-remediationRemediationCooldown: 15m
+remediationCooldown: 15m
 
+# Action type — two ways to switch from noop to vm-reset:
+#
+# Option 1: Edit this file directly
+#   Set action.type: vm-reset and dryRun: false below, then:
+#   bash e2e/run-e2e.sh vm-reset
+#
+# Option 2: Use --set overrides (no file edit needed)
+#   bash e2e/run-e2e.sh vm-reset \
+#     --set action.type=vm-reset \
+#     --set dryRun=false
+#
 # Start with noop — no real VM actions
 action:
   type: noop
@@ -44,6 +55,7 @@ crusoeApiSecret: crusoe-api-credentials
 crusoeProjectId: ""  # Set: your-project-id
 
 # Start with dry-run — no changes to nodes
+# Set to false when ready for real actions (see vm-reset above)
 dryRun: true
 
 activeDeadlineSeconds: 600

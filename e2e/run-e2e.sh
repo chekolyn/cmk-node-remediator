@@ -22,8 +22,8 @@
 # It is never written to disk or saved in shell history.
 #
 # Examples:
-#   CRUSOE_API_KEY="your-key" bash e2e/run-e2e.sh all
-#   CRUSOE_API_KEY="your-key" bash e2e/run-e2e.sh deploy --values e2e/values.yaml
+#   CRUSOE_ACCESS_KEY="your-access-key" CRUSOE_SECRET_KEY="your-secret-key" bash e2e/run-e2e.sh all
+#   CRUSOE_ACCESS_KEY="your-access-key" CRUSOE_SECRET_KEY="your-secret-key" bash e2e/run-e2e.sh deploy --values e2e/values.yaml
 #   bash e2e/run-e2e.sh cleanup  # no key needed
 
 set -euo pipefail
@@ -36,7 +36,8 @@ NAMESPACE="crusoe-node-remediation"
 RELEASE_NAME="crusoe-node-remediation"
 VALUES_FILE="$SCRIPT_DIR/values.yaml"
 CRUSOE_API_URL="https://api.cloud.crusoe.ai/v1alpha5"
-CRUSOE_API_KEY="${CRUSOE_API_KEY:-}"
+CRUSOE_ACCESS_KEY="${CRUSOE_ACCESS_KEY:-}"
+CRUSOE_SECRET_KEY="${CRUSOE_SECRET_KEY:-}"
 PHASE="all"
 
 # ── Parse args ────────────────────────────────────────────────────
@@ -60,14 +61,15 @@ check_prereqs() {
 }
 
 ensure_secret() {
-    if [ -z "$CRUSOE_API_KEY" ]; then
-        err "CRUSOE_API_KEY not set. Export it at runtime:\n  CRUSOE_API_KEY=\"your-key\" bash e2e/run-e2e.sh deploy"
+    if [ -z "$CRUSOE_ACCESS_KEY" ] || [ -z "$CRUSOE_SECRET_KEY" ]; then
+        err "CRUSOE_ACCESS_KEY and CRUSOE_SECRET_KEY not set. Export them at runtime:\n  CRUSOE_ACCESS_KEY=\"your-access-key\" CRUSOE_SECRET_KEY=\"your-secret-key\" bash e2e/run-e2e.sh deploy"
     fi
     kubectl get namespace "$NAMESPACE" >/dev/null 2>&1 || \
         kubectl create namespace "$NAMESPACE"
     kubectl create secret generic crusoe-api-credentials \
         --namespace "$NAMESPACE" \
-        --from-literal=api-key="$CRUSOE_API_KEY" \
+        --from-literal=access-key="$CRUSOE_ACCESS_KEY" \
+        --from-literal=secret-key="$CRUSOE_SECRET_KEY" \
         --from-literal=api-url="$CRUSOE_API_URL" \
         --dry-run=client -o yaml | kubectl apply -f -
 

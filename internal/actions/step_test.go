@@ -42,7 +42,7 @@ func TestVMResetStepRequiresNode(t *testing.T) {
 	// This test verifies the step fails gracefully if the node doesn't exist.
 	clientset := fake.NewSimpleClientset() // no nodes
 	k8sClient := k8s.NewClient(clientset, nil)
-	crusoeClient := crusoe.NewClient("http://localhost", "key", "proj-1")
+	crusoeClient := crusoe.NewClient("http://localhost", "test-access", "test-secret", "proj-1")
 
 	step := &VMResetStep{
 		crusoeClient: crusoeClient,
@@ -62,7 +62,7 @@ func TestVMResetStepRequiresNode(t *testing.T) {
 func TestFactoryCreatesSingleStep(t *testing.T) {
 	clientset := fake.NewSimpleClientset()
 	k8sClient := k8s.NewClient(clientset, nil)
-	crusoeClient := crusoe.NewClient("http://localhost", "key", "proj-1")
+	crusoeClient := crusoe.NewClient("http://localhost", "test-access", "test-secret", "proj-1")
 
 	factory := NewFactory(k8sClient, crusoeClient)
 	step, err := factory.Create("noop", 30*time.Second, 3)
@@ -77,7 +77,7 @@ func TestFactoryCreatesSingleStep(t *testing.T) {
 func TestFactoryCreatesInvalidType(t *testing.T) {
 	clientset := fake.NewSimpleClientset()
 	k8sClient := k8s.NewClient(clientset, nil)
-	crusoeClient := crusoe.NewClient("http://localhost", "key", "proj-1")
+	crusoeClient := crusoe.NewClient("http://localhost", "test-access", "test-secret", "proj-1")
 
 	factory := NewFactory(k8sClient, crusoeClient)
 	_, err := factory.Create("invalid", 30*time.Second, 3)
@@ -129,7 +129,7 @@ func TestBootVerifierCaptureBootID(t *testing.T) {
 func TestCreateFromConfigMultiStep(t *testing.T) {
 	clientset := fake.NewSimpleClientset()
 	k8sClient := k8s.NewClient(clientset, nil)
-	crusoeClient := crusoe.NewClient("http://localhost", "key", "proj-1")
+	crusoeClient := crusoe.NewClient("http://localhost", "test-access", "test-secret", "proj-1")
 	factory := NewFactory(k8sClient, crusoeClient)
 
 	cfg := config.ActionConfig{
@@ -178,7 +178,7 @@ func TestCreateFromConfigMultiStep(t *testing.T) {
 func TestCreateFromConfigSingleStep(t *testing.T) {
 	clientset := fake.NewSimpleClientset()
 	k8sClient := k8s.NewClient(clientset, nil)
-	crusoeClient := crusoe.NewClient("http://localhost", "key", "proj-1")
+	crusoeClient := crusoe.NewClient("http://localhost", "test-access", "test-secret", "proj-1")
 	factory := NewFactory(k8sClient, crusoeClient)
 
 	cfg := config.ActionConfig{

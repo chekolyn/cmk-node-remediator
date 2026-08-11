@@ -55,7 +55,7 @@ func TestIntegrationFullRemediationWorkflow(t *testing.T) {
 		NodeSelector:           config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
-	crusoeClient := crusoe.NewClient("http://localhost:9999", "test-key", "proj-1")
+	crusoeClient := crusoe.NewClient("http://localhost:9999", "test-access", "test-secret", "proj-1")
 	stepFactory := actions.NewFactory(k8sClient, crusoeClient)
 
 	deps := Dependencies{
@@ -120,7 +120,7 @@ func TestIntegrationDryRunNoChanges(t *testing.T) {
 		NodeSelector:         config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
-	crusoeClient := crusoe.NewClient("http://localhost", "key", "proj-1")
+	crusoeClient := crusoe.NewClient("http://localhost", "test-access", "test-secret", "proj-1")
 	stepFactory := actions.NewFactory(k8sClient, crusoeClient)
 
 	deps := Dependencies{
@@ -186,7 +186,7 @@ func TestIntegrationRemediationCooldownSkipsRemediation(t *testing.T) {
 		NodeSelector:         config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
-	crusoeClient := crusoe.NewClient("http://localhost", "key", "proj-1")
+	crusoeClient := crusoe.NewClient("http://localhost", "test-access", "test-secret", "proj-1")
 	stepFactory := actions.NewFactory(k8sClient, crusoeClient)
 
 	deps := Dependencies{

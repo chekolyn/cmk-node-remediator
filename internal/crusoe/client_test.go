@@ -53,7 +53,7 @@ func TestGetVMUptimeInvalidTimestamp(t *testing.T) {
 }
 
 func TestNewClient(t *testing.T) {
-	client := NewClient("https://api.crusoe.ai", "test-key", "proj-123")
+	client := NewClient("https://api.crusoe.ai", "test-access", "test-secret", "proj-123")
 	if client == nil {
 		t.Fatal("NewClient returned nil")
 	}

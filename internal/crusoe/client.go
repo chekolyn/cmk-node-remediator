@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/antihax/optional"
+	"github.com/crusoecloud/client-go/auth"
 	crusoe "github.com/crusoecloud/client-go/swagger/v1alpha5"
 )
 
@@ -22,21 +23,24 @@ type vmUptimeInfo struct {
 type Client struct {
 	vmsAPI         *crusoe.VMsApiService
 	vmOpsAPI       *crusoe.VMOperationsApiService
+	identitiesAPI  *crusoe.IdentitiesApiService
 	projectID      string
 }
 
-// NewClient creates a new Crusoe API client using the official SDK.
-func NewClient(apiURL, apiKey, projectID string) *Client {
-	cfg := crusoe.NewConfiguration()
+// NewClient creates a new Crusoe API client using HMAC auth (access/secret key pair).
+// The SDK's auth package signs each request with HMAC-SHA256, the same mechanism
+// used by the Crusoe CLI. This avoids the need for a separate bearer token.
+func NewClient(apiURL, accessKey, secretKey, projectID string) *Client {
+	cfg := auth.NewAuthenticatedConfig(accessKey, secretKey)
 	cfg.BasePath = apiURL
-	cfg.AddDefaultHeader("Authorization", "Bearer "+apiKey)
 
 	apiClient := crusoe.NewAPIClient(cfg)
 
 	return &Client{
-		vmsAPI:    apiClient.VMsApi,
-		vmOpsAPI:  apiClient.VMOperationsApi,
-		projectID: projectID,
+		vmsAPI:        apiClient.VMsApi,
+		vmOpsAPI:      apiClient.VMOperationsApi,
+		identitiesAPI: apiClient.IdentitiesApi,
+		projectID:     projectID,
 	}
 }
 
@@ -61,6 +65,22 @@ func detailError(err error) string {
 		}
 	}
 	return err.Error()
+}
+
+// VerifyAccess tests that the Crusoe API credentials are valid by calling
+// the /users/identities endpoint (same as `crusoe whoami`). This is a
+// lightweight call that doesn't require a project ID.
+func (c *Client) VerifyAccess(ctx context.Context) error {
+	user, _, err := c.identitiesAPI.GetUserIdentity(ctx)
+	if err != nil {
+		return fmt.Errorf("Crusoe API access verification failed: %s", detailError(err))
+	}
+	if user.Identity != nil {
+		log.Printf("Crusoe API access verified (user: %s)", user.Identity.Email)
+	} else {
+		log.Printf("Crusoe API access verified")
+	}
+	return nil
 }
 
 // GetVMState queries the Crusoe API for a VM's current state.
