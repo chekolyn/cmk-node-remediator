@@ -311,7 +311,11 @@ func (m *Manager) handleCordonNode(ctx context.Context, nodeInfo discovery.NodeI
 	// LabelRemediationManaged), an engineer cordoned it for manual
 	// maintenance — don't adopt it.
 	if k8s.IsCordoned(nodeInfo.Node) && nodeInfo.Node.Labels[constants.LabelRemediationManaged] != "true" {
-		log.Printf("skipping node %s: cordoned by another engineer (not managed by us)", nodeInfo.Name)
+		namespace := os.Getenv("POD_NAMESPACE")
+		if namespace == "" {
+			namespace = "crusoe-node-remediation"
+		}
+		log.Printf("skipping node %s: already cordoned (not managed by %s)", nodeInfo.Name, namespace)
 		return
 	}
 
@@ -358,7 +362,11 @@ func (m *Manager) handleRemediateNode(ctx context.Context, nodeInfo discovery.No
 	// LabelRemediationManaged), an engineer cordoned it for manual
 	// maintenance — don't drain, reset, or uncordon it.
 	if k8s.IsCordoned(nodeInfo.Node) && nodeInfo.Node.Labels[constants.LabelRemediationManaged] != "true" {
-		log.Printf("skipping node %s: cordoned by another engineer (not managed by us)", nodeInfo.Name)
+		namespace := os.Getenv("POD_NAMESPACE")
+		if namespace == "" {
+			namespace = "crusoe-node-remediation"
+		}
+		log.Printf("skipping node %s: already cordoned (not managed by %s)", nodeInfo.Name, namespace)
 		return nil
 	}
 
