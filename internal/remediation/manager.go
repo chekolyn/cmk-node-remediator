@@ -383,14 +383,19 @@ log.Printf("remediating node %s with action %s (uptime %s)",
 	// Set managed label
 	m.deps.K8sClient.SetLabel(ctx, nodeInfo.Name, constants.LabelRemediationManaged, "true")
 
-	// 1. Cordon
-	if err := m.deps.K8sClient.Cordon(ctx, nodeInfo.Name); err != nil {
-		log.Printf("ERROR: failed to cordon node %s: %v", nodeInfo.Name, err)
-		return err
+	// 1. Cordon — skip if already cordoned (idempotent: verify actual state)
+	alreadyCordoned := k8s.IsCordoned(nodeInfo.Node)
+	if !alreadyCordoned {
+		if err := m.deps.K8sClient.Cordon(ctx, nodeInfo.Name); err != nil {
+			log.Printf("ERROR: failed to cordon node %s: %v", nodeInfo.Name, err)
+			return err
+		}
+		m.deps.K8sClient.SetLabel(ctx, nodeInfo.Name, constants.LabelRemediationPhase, string(constants.PhaseCordoned))
+		m.deps.K8sClient.AddTaint(ctx, nodeInfo.Name, constants.TaintScheduled)
+		m.deps.K8sClient.SetAnnotation(ctx, nodeInfo.Name, constants.AnnotationCordonedAt, time.Now().UTC().Format(time.RFC3339))
+	} else {
+		log.Printf("node %s already cordoned, skipping cordon", nodeInfo.Name)
 	}
-	m.deps.K8sClient.SetLabel(ctx, nodeInfo.Name, constants.LabelRemediationPhase, string(constants.PhaseCordoned))
-	m.deps.K8sClient.AddTaint(ctx, nodeInfo.Name, constants.TaintScheduled)
-	m.deps.K8sClient.SetAnnotation(ctx, nodeInfo.Name, constants.AnnotationCordonedAt, time.Now().UTC().Format(time.RFC3339))
 
 	// Increment guardrail counters — this node is now being remediated.
 	// Only increment for new remediations, not retries (the node already
@@ -400,7 +405,8 @@ log.Printf("remediating node %s with action %s (uptime %s)",
 		*poolActive++
 	}
 
-	// 2. Drain
+	// 2. Drain — always call. Drain is idempotent: if pods are already
+	// evicted (from a previous run), it succeeds immediately.
 	m.deps.K8sClient.SetLabel(ctx, nodeInfo.Name, constants.LabelRemediationPhase, string(constants.PhaseDraining))
 	m.deps.K8sClient.AddTaint(ctx, nodeInfo.Name, constants.TaintDraining)
 	m.deps.K8sClient.RemoveTaint(ctx, nodeInfo.Name, constants.TaintScheduled)
