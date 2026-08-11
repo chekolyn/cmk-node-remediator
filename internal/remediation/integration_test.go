@@ -1,4 +1,4 @@
-package lifecycle
+package remediation
 
 import (
 	"context"
@@ -10,13 +10,13 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/record"
 
-	"cmk-node-remediation/internal/actions"
-	"cmk-node-remediation/internal/config"
-	"cmk-node-remediation/internal/constants"
-	"cmk-node-remediation/internal/crusoe"
-	"cmk-node-remediation/internal/discovery"
-	"cmk-node-remediation/internal/guardrails"
-	"cmk-node-remediation/internal/k8s"
+	"crusoe-node-remediation/internal/actions"
+	"crusoe-node-remediation/internal/config"
+	"crusoe-node-remediation/internal/constants"
+	"crusoe-node-remediation/internal/crusoe"
+	"crusoe-node-remediation/internal/discovery"
+	"crusoe-node-remediation/internal/guardrails"
+	"crusoe-node-remediation/internal/k8s"
 )
 
 func TestIntegrationFullRemediationWorkflow(t *testing.T) {
@@ -43,13 +43,13 @@ func TestIntegrationFullRemediationWorkflow(t *testing.T) {
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
 		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
-		ActionThreshold:      config.Duration(60 * 24 * time.Hour),
+		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
 		DryRun:                 false,
-		VMInstanceTypeFilter:   "b200.*",
+		InstanceTypeFilter:   "b200.*",
 		Action:                 config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
 		Guardrails:             config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
 		DrainTimeout:           1 * time.Second,
-		ForceDrainAfterTimeout: true,
+		ForceAfterEvictionFailure: true,
 		CrusoeAPISecret:        "test-secret",
 		CrusoeProjectID:        "proj-1",
 		NodeSelector:           config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
@@ -109,9 +109,9 @@ func TestIntegrationDryRunNoChanges(t *testing.T) {
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
 		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
-		ActionThreshold:      config.Duration(60 * 24 * time.Hour),
+		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
 		DryRun:               true,
-		VMInstanceTypeFilter: "b200.*",
+		InstanceTypeFilter: "b200.*",
 		Action:               config.ActionConfig{Type: "vm-reset", Timeout: 30 * time.Minute, MaxRetries: 3},
 		Guardrails:           config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
 		DrainTimeout:         10 * time.Minute,
@@ -149,9 +149,9 @@ func TestIntegrationDryRunNoChanges(t *testing.T) {
 	}
 }
 
-func TestIntegrationCooldownSkipsRemediation(t *testing.T) {
-	// Node was remediated recently — should be skipped due to cooldown
-	recentTime := time.Now().AddDate(0, 0, -3).Format(time.RFC3339) // 3 days ago, within 7-day cooldown
+func TestIntegrationRemediationCooldownSkipsRemediation(t *testing.T) {
+	// Node was remediated recently — should be skipped due to remediationCooldown
+	recentTime := time.Now().AddDate(0, 0, -3).Format(time.RFC3339) // 3 days ago, within 7-day remediationCooldown
 
 	clientset := fake.NewSimpleClientset(
 		&corev1.Node{
@@ -174,10 +174,10 @@ func TestIntegrationCooldownSkipsRemediation(t *testing.T) {
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
 		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
-		ActionThreshold:      config.Duration(60 * 24 * time.Hour),
-		Cooldown:             config.Duration(7 * 24 * time.Hour),
+		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
+		RemediationCooldown:             config.Duration(7 * 24 * time.Hour),
 		DryRun:               false,
-		VMInstanceTypeFilter: "b200.*",
+		InstanceTypeFilter: "b200.*",
 		Action:               config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
 		Guardrails:           config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
 		DrainTimeout:         10 * time.Minute,
@@ -206,9 +206,9 @@ func TestIntegrationCooldownSkipsRemediation(t *testing.T) {
 		t.Fatalf("Run failed: %v", err)
 	}
 
-	// Node should NOT be cordoned — it's in cooldown
+	// Node should NOT be cordoned — it's in remediationCooldown
 	node, _ := clientset.CoreV1().Nodes().Get(context.Background(), "node-b200-1", metav1.GetOptions{})
 	if node.Spec.Unschedulable {
-		t.Error("node should not be cordoned during cooldown")
+		t.Error("node should not be cordoned during remediationCooldown")
 	}
 }

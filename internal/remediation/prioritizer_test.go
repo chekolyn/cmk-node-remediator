@@ -1,4 +1,4 @@
-package lifecycle
+package remediation
 
 import (
 	"testing"
@@ -26,47 +26,6 @@ func TestHighestUptimePrioritizer(t *testing.T) {
 	}
 }
 
-func TestLowestUptimePrioritizer(t *testing.T) {
-	nodes := []NodeWithUptime{
-		{Name: "node-1", Uptime: 30 * time.Minute},
-		{Name: "node-2", Uptime: 2 * time.Hour},
-		{Name: "node-3", Uptime: 1 * time.Hour},
-	}
-
-	p := lowestUptime{}
-	p.Sort(nodes)
-
-	if nodes[0].Name != "node-1" {
-		t.Errorf("first node = %s, want node-1 (30m uptime)", nodes[0].Name)
-	}
-	if nodes[1].Name != "node-3" {
-		t.Errorf("second node = %s, want node-3 (1h uptime)", nodes[1].Name)
-	}
-	if nodes[2].Name != "node-2" {
-		t.Errorf("third node = %s, want node-2 (2h uptime)", nodes[2].Name)
-	}
-}
-
-func TestNoPriorityKeepsOrder(t *testing.T) {
-	original := []NodeWithUptime{
-		{Name: "node-1", Uptime: 30 * time.Minute},
-		{Name: "node-2", Uptime: 2 * time.Hour},
-		{Name: "node-3", Uptime: 1 * time.Hour},
-	}
-
-	nodes := make([]NodeWithUptime, len(original))
-	copy(nodes, original)
-
-	p := noPriority{}
-	p.Sort(nodes)
-
-	for i := range nodes {
-		if nodes[i].Name != original[i].Name {
-			t.Errorf("position %d: got %s, want %s (order should not change)", i, nodes[i].Name, original[i].Name)
-		}
-	}
-}
-
 func TestGetPrioritizerByName(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -74,8 +33,6 @@ func TestGetPrioritizerByName(t *testing.T) {
 		wantErr bool
 	}{
 		{"highest-uptime", "highest-uptime", false},
-		{"lowest-uptime", "lowest-uptime", false},
-		{"none", "none", false},
 		{"", "highest-uptime", false}, // empty = default
 		{"invalid", "", true},
 	}
@@ -95,14 +52,6 @@ func TestGetPrioritizerByName(t *testing.T) {
 }
 
 func TestRegisterCustomPrioritizer(t *testing.T) {
-	// Custom prioritizer that sorts by name alphabetically
-	type alphaSort struct{}
-
-	var alpha alphaSort
-	// Can't define methods on local types in Go — use a package-level type instead.
-	// For this test, we'll use a simple approach: register a pre-made prioritizer.
-	_ = alpha
-
 	// Use a mock prioritizer for testing the registry
 	mockP := &mockPrioritizer{name: "test-alpha"}
 	RegisterPrioritizer(mockP)
@@ -121,5 +70,5 @@ type mockPrioritizer struct {
 	name string
 }
 
-func (m *mockPrioritizer) Name() string { return m.name }
+func (m *mockPrioritizer) Name() string                 { return m.name }
 func (m *mockPrioritizer) Sort(nodes []NodeWithUptime) {}

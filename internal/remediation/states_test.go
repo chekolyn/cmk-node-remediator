@@ -1,10 +1,10 @@
-package lifecycle
+package remediation
 
 import (
 	"testing"
 	"time"
 
-	"cmk-node-remediation/internal/constants"
+	"crusoe-node-remediation/internal/constants"
 )
 
 func TestClassifyUptime(t *testing.T) {
@@ -12,7 +12,7 @@ func TestClassifyUptime(t *testing.T) {
 		name            string
 		uptime          time.Duration
 		cordonThreshold time.Duration
-		actionThreshold time.Duration
+		remediationThreshold time.Duration
 		want            ActionTier
 	}{
 		{"below cordon", 40 * 24 * time.Hour, 55 * 24 * time.Hour, 60 * 24 * time.Hour, ActionNone},
@@ -31,10 +31,10 @@ func TestClassifyUptime(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := ClassifyUptime(tt.uptime, tt.cordonThreshold, tt.actionThreshold)
+			got := ClassifyUptime(tt.uptime, tt.cordonThreshold, tt.remediationThreshold)
 			if got != tt.want {
 				t.Errorf("ClassifyUptime(%v, %v, %v) = %v, want %v",
-					tt.uptime, tt.cordonThreshold, tt.actionThreshold, got, tt.want)
+					tt.uptime, tt.cordonThreshold, tt.remediationThreshold, got, tt.want)
 			}
 		})
 	}

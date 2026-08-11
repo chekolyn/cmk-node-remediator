@@ -4,7 +4,7 @@
 
 set -e
 
-CHART_DIR="helm/cmk-node-remediation"
+CHART_DIR="helm/crusoe-node-remediation"
 FAIL=0
 
 echo "=== Test 1: Default values render without error ==="

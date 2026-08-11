@@ -33,8 +33,8 @@ func (dm *DrainManager) Drain(ctx context.Context, nodeName string) error {
 	return dm.runDrain(ctx, nodeName, false)
 }
 
-// ForceDrain evicts all evictable pods from a node, ignoring PDBs.
-func (dm *DrainManager) ForceDrain(ctx context.Context, nodeName string) error {
+// ForceAfterEvictionFailure evicts all evictable pods from a node, ignoring PDBs.
+func (dm *DrainManager) ForceAfterEvictionFailure(ctx context.Context, nodeName string) error {
 	return dm.runDrain(ctx, nodeName, true)
 }
 
@@ -51,8 +51,12 @@ func (dm *DrainManager) runDrain(ctx context.Context, nodeName string, force boo
 	}
 
 	if force {
+		// Force drain: delete emptyDir data so pods with local storage can be evicted.
+		// Do NOT disable eviction — that causes the drainer to try deleting DaemonSet
+		// pods directly, which fails with "cannot delete daemonsets.apps".
+		// With eviction enabled, DaemonSet pods are skipped (IgnoreAllDaemonSets=true)
+		// and the rest are evicted ignoring PDBs (Force=true).
 		drainer.DeleteEmptyDirData = true
-		drainer.DisableEviction = true
 	}
 
 	node, err := dm.clientset.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})

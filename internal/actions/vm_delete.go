@@ -6,14 +6,14 @@ import (
 	"log"
 	"time"
 
-	"cmk-node-remediation/internal/crusoe"
-	"cmk-node-remediation/internal/k8s"
+	"crusoe-node-remediation/internal/crusoe"
+	"crusoe-node-remediation/internal/k8s"
 )
 
 // VMDeleteStep deletes a VM via the Crusoe API.
 // Idempotent: if the VM is already gone (404), it skips.
 // Two-phase verification: (1) poll Crusoe operation completion, (2) wait for VM to be gone.
-// Note: After delete, the old node object may linger. The lifecycle manager handles
+// Note: After delete, the old node object may linger. The remediation manager handles
 // the case where the old node is gone (don't uncordon).
 type VMDeleteStep struct {
 	crusoeClient *crusoe.Client

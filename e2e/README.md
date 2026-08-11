@@ -1,6 +1,6 @@
 # E2E Tests
 
-End-to-end tests for cmk-node-remediation.
+End-to-end tests for crusoe-node-remediation.
 
 ## Quick Start
 
@@ -28,13 +28,13 @@ different `values.yaml`. The workflow is identical:
 
 ```bash
 # E2E (test cluster, fast thresholds, noop action)
-helm install cmk-node-remediation ./helm/cmk-node-remediation \
-  --namespace cmk-node-remediation \
+helm install crusoe-node-remediation ./helm/crusoe-node-remediation \
+  --namespace crusoe-node-remediation \
   -f e2e/example-values.yaml
 
 # Production (real cluster, 55d/60d thresholds, vm-reset)
-helm install cmk-node-remediation ./helm/cmk-node-remediation \
-  --namespace cmk-node-remediation \
+helm install crusoe-node-remediation ./helm/crusoe-node-remediation \
+  --namespace crusoe-node-remediation \
   -f my-production-values.yaml
 ```
 
@@ -58,7 +58,7 @@ Edit `e2e/values.yaml`:
 
 ```yaml
 image:
-  repository: registry.your-location.ccr.crusoecloudcompute.com/cmk-node-remediation.your-project-id
+  repository: registry.your-location.ccr.crusoecloudcompute.com/crusoe-node-remediation.your-project-id
   tag: v0.0.1
 
 nodeSelector:
@@ -86,4 +86,4 @@ crusoeProjectId: "your-project-id"
 |------|-------------|---------|
 | `--api-key KEY` | Crusoe API key for K8s secret | (required for deploy) |
 | `--values FILE` | Path to values file | `e2e/values.yaml` |
-| `--namespace NS` | Kubernetes namespace | `cmk-node-remediation` |
+| `--namespace NS` | Kubernetes namespace | `crusoe-node-remediation` |

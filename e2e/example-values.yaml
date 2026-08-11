@@ -6,7 +6,7 @@
 # Then run: bash e2e/run-e2e.sh all --api-key YOUR_KEY
 
 image:
-  repository: ""  # Set: registry.your-location.ccr.crusoecloudcompute.com/cmk-node-remediation.your-project-id
+  repository: ""  # Set: registry.your-location.ccr.crusoecloudcompute.com/crusoe-node-remediation.your-project-id
   tag: v0.0.1
   pullPolicy: IfNotPresent
 
@@ -19,12 +19,12 @@ nodeSelector:
     # crusoe.ai/project.id: "your-project-id"
 
 # Test cluster VM type filter
-vmInstanceTypeFilter: "c1a.*"
+instanceTypeFilter: "c1a.*"
 
 # Fast thresholds for testing (minutes, not days)
 cordonThreshold: 30m
-actionThreshold: 1h
-cooldown: 15m
+remediationThreshold: 1h
+remediationRemediationCooldown: 15m
 
 # Start with noop — no real VM actions
 action:
@@ -38,7 +38,7 @@ guardrails:
   perPoolMaxCordoned: 1
 
 drainTimeout: 2m
-forceDrainAfterTimeout: true
+forceAfterEvictionFailure: true
 
 crusoeApiSecret: crusoe-api-credentials
 crusoeProjectId: ""  # Set: your-project-id

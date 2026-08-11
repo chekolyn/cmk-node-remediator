@@ -10,20 +10,20 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/kubernetes/scheme"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/tools/record"
 
-	"cmk-node-remediation/internal/actions"
-	"cmk-node-remediation/internal/config"
-	"cmk-node-remediation/internal/crusoe"
-	"cmk-node-remediation/internal/discovery"
-	"cmk-node-remediation/internal/guardrails"
-	"cmk-node-remediation/internal/k8s"
-	"cmk-node-remediation/internal/lifecycle"
+	"crusoe-node-remediation/internal/actions"
+	"crusoe-node-remediation/internal/config"
+	"crusoe-node-remediation/internal/crusoe"
+	"crusoe-node-remediation/internal/discovery"
+	"crusoe-node-remediation/internal/guardrails"
+	"crusoe-node-remediation/internal/k8s"
+	"crusoe-node-remediation/internal/remediation"
 )
 
 func main() {
@@ -33,12 +33,13 @@ func main() {
 	validateOnly := flag.Bool("validate", false, "validate config and exit")
 	flag.Parse()
 
-	log.Println("cmk-node-remediation starting")
+	log.Println("crusoe-node-remediation starting")
+	log.Println("────────────────────────────────────────────────────────────")
 
 	// 1. Load config from mounted ConfigMap
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
-		configPath = "/etc/cmk-node-remediation/config.yaml"
+		configPath = "/etc/crusoe-node-remediation/config.yaml"
 	}
 
 	configData, err := os.ReadFile(configPath)
@@ -55,8 +56,11 @@ func main() {
 		log.Fatalf("config validation failed: %v", err)
 	}
 
-	log.Printf("config loaded: cordonThreshold=%v, actionThreshold=%v, action=%s, dryRun=%v",
-		cfg.CordonThreshold, cfg.ActionThreshold, cfg.Action.Type, cfg.DryRun)
+	log.Printf("config: thresholds=(cordon=%s, remediation=%s, cooldown=%s), action=(type=%s, dryRun=%v), guardrails=(global=%d, perPool=%d), drain=(timeout=%s, force=%v)",
+		cfg.CordonDuration(), cfg.RemediationThresholdDuration(), cfg.RemediationCooldownDuration(),
+		cfg.Action.Type, cfg.DryRun,
+		cfg.Guardrails.GlobalMaxCordoned, cfg.Guardrails.PerPoolMaxCordoned,
+		cfg.DrainTimeout, cfg.ForceAfterEvictionFailure)
 
 	// If --validate, exit here (config is valid)
 	if *validateOnly {
@@ -90,7 +94,7 @@ func main() {
 	stepFactory := actions.NewFactory(k8sClient, crusoeClient)
 
 	// 6. Create drain manager
-	drainMgr := k8s.NewDrainManager(k8sClient, k8sClientset, cfg.DrainTimeout, cfg.ForceDrainAfterTimeout)
+	drainMgr := k8s.NewDrainManager(k8sClient, k8sClientset, cfg.DrainTimeout, cfg.ForceAfterEvictionFailure)
 
 	// 7. Create guardrail checker
 	guardChecker := guardrails.NewChecker(cfg.Guardrails)
@@ -99,16 +103,17 @@ func main() {
 	discoverer := discovery.NewDiscoverer(k8sClient, cfg)
 
 	// 9. Create K8s Event recorder
-	broadcaster := record.NewBroadcaster()
-	broadcaster.StartLogging(log.Printf)
-	broadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: k8sClientset.CoreV1().Events("")})
-	recorder := broadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "cmk-node-remediation"})
+	// Use direct API event creation instead of the broadcaster to prevent
+	// event dropping when multiple nodes are remediated in quick succession.
+	recorder := &directEventRecorder{
+		events: k8sClientset.CoreV1().Events("default"),
+	}
 
 	// 10. Create uptime evaluator (uses K8s client for stats summary)
 	uptimeEval := &k8sUptimeEvaluator{k8sClient: k8sClient}
 
-	// 11. Create lifecycle manager
-	deps := lifecycle.Dependencies{
+	// 11. Create remediation manager
+	deps := remediation.Dependencies{
 		K8sClient:    k8sClient,
 		DrainMgr:     drainMgr,
 		StepFactory:  stepFactory,
@@ -119,27 +124,82 @@ func main() {
 		Recorder:     recorder,
 	}
 
-	mgr := lifecycle.NewManager(deps)
+	mgr := remediation.NewManager(deps)
 
 	// 12. Run one pass (CronJob triggers a new pod each run)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
 	defer cancel()
 
 	if err := mgr.Run(ctx); err != nil {
-		log.Printf("lifecycle run failed: %v", err)
+		log.Printf("remediation run failed: %v", err)
 		os.Exit(1)
 	}
 
-	log.Println("cmk-node-remediation completed successfully")
+	log.Println("────────────────────────────────────────────────────────────")
+	log.Println("crusoe-node-remediation completed successfully")
 }
 
-// k8sUptimeEvaluator implements lifecycle.UptimeEvaluator using the K8s client.
+// k8sUptimeEvaluator implements remediation.UptimeEvaluator using the K8s client.
 type k8sUptimeEvaluator struct {
 	k8sClient *k8s.Client
 }
 
 func (e *k8sUptimeEvaluator) GetNodeStartTime(ctx context.Context, nodeName string) (time.Time, error) {
 	return e.k8sClient.GetNodeStartTime(ctx, nodeName)
+}
+
+// directEventRecorder creates K8s events directly via the API instead of
+// using the broadcaster, which can drop events when multiple nodes are
+// remediated in quick succession.
+type directEventRecorder struct {
+	events typedcorev1.EventInterface
+}
+
+func (r *directEventRecorder) Event(obj runtime.Object, eventType, reason, message string) {
+	r.createEvent(obj, eventType, reason, message)
+}
+
+func (r *directEventRecorder) Eventf(obj runtime.Object, eventType, reason, messageFmt string, args ...interface{}) {
+	r.createEvent(obj, eventType, reason, fmt.Sprintf(messageFmt, args...))
+}
+
+func (r *directEventRecorder) AnnotatedEventf(obj runtime.Object, annotations map[string]string, eventType, reason, messageFmt string, args ...interface{}) {
+	r.Eventf(obj, eventType, reason, messageFmt, args...)
+}
+
+func (r *directEventRecorder) createEvent(obj runtime.Object, eventType, reason, message string) {
+	if r.events == nil {
+		return
+	}
+	node, ok := obj.(*corev1.Node)
+	if !ok {
+		return
+	}
+	now := v1.Now()
+	_, err := r.events.Create(context.Background(), &corev1.Event{
+		ObjectMeta: v1.ObjectMeta{
+			GenerateName: "crusoe-node-remediation-",
+			Namespace:    "default",
+		},
+		InvolvedObject: corev1.ObjectReference{
+			Kind:       "Node",
+			Name:       node.Name,
+			UID:        node.UID,
+			APIVersion:  "v1",
+		},
+		Reason:  reason,
+		Message: message,
+		Source: corev1.EventSource{
+			Component: "crusoe-node-remediation",
+		},
+		FirstTimestamp: now,
+		LastTimestamp:  now,
+		Count:          1,
+		Type:           eventType,
+	}, v1.CreateOptions{})
+	if err != nil {
+		log.Printf("warning: failed to create event (reason=%s, node=%s): %v", reason, node.Name, err)
+	}
 }
 
 func createK8sClient() (*kubernetes.Clientset, *rest.Config, error) {

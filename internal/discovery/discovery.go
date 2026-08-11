@@ -8,9 +8,9 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	"cmk-node-remediation/internal/config"
-	"cmk-node-remediation/internal/constants"
-	"cmk-node-remediation/internal/k8s"
+	"crusoe-node-remediation/internal/config"
+	"crusoe-node-remediation/internal/constants"
+	"crusoe-node-remediation/internal/k8s"
 )
 
 // NodeInfo holds metadata about a discovered node.
@@ -52,10 +52,10 @@ func (d *Discoverer) Discover(ctx context.Context) ([]NodeGroup, error) {
 	}
 
 	var typeRegex *regexp.Regexp
-	if d.cfg.VMInstanceTypeFilter != "" {
-		typeRegex, err = regexp.Compile(d.cfg.VMInstanceTypeFilter)
+	if d.cfg.InstanceTypeFilter != "" {
+		typeRegex, err = regexp.Compile(d.cfg.InstanceTypeFilter)
 		if err != nil {
-			return nil, fmt.Errorf("invalid vmInstanceTypeFilter: %w", err)
+			return nil, fmt.Errorf("invalid instanceTypeFilter: %w", err)
 		}
 	}
 
@@ -65,8 +65,8 @@ func (d *Discoverer) Discover(ctx context.Context) ([]NodeGroup, error) {
 		node := &nodeList.Items[i]
 
 		if typeRegex != nil {
-			vmType := node.Labels[constants.LabelInstanceType]
-			if vmType == "" || !typeRegex.MatchString(vmType) {
+			instanceType := node.Labels[constants.LabelInstanceType]
+			if instanceType == "" || !typeRegex.MatchString(instanceType) {
 				continue
 			}
 		}

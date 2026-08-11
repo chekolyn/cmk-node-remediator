@@ -1,19 +1,13 @@
-# Build stage
-FROM golang:1.22-alpine AS builder
+# Runtime stage — Alpine for debugging (exec into pods, shell access)
+# Binary is pre-compiled on the host to avoid QEMU segfaults
+FROM alpine:3.19
 
-WORKDIR /app
+RUN apk add --no-cache ca-certificates && \
+    addgroup -g 65532 -S app && \
+    adduser -u 65532 -S app -G app
 
-# Copy go mod files first for better layer caching
-COPY go.mod go.sum ./
-RUN go mod download
+COPY --chmod=0755 crusoe-node-remediation /crusoe-node-remediation
 
-# Copy source code and build
-COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o cmk-node-remediation ./cmd/manager
+USER 65532:65532
 
-# Runtime stage
-FROM gcr.io/distroless/static-debian12
-
-COPY --from=builder /app/cmk-node-remediation /cmk-node-remediation
-
-ENTRYPOINT ["/cmk-node-remediation"]
+ENTRYPOINT ["/crusoe-node-remediation"]

@@ -10,10 +10,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
-	"cmk-node-remediation/internal/actions/helpers"
-	"cmk-node-remediation/internal/config"
-	"cmk-node-remediation/internal/crusoe"
-	"cmk-node-remediation/internal/k8s"
+	"crusoe-node-remediation/internal/actions/helpers"
+	"crusoe-node-remediation/internal/config"
+	"crusoe-node-remediation/internal/crusoe"
+	"crusoe-node-remediation/internal/k8s"
 )
 
 func TestNoopStep(t *testing.T) {
@@ -38,7 +38,7 @@ func TestVMResetStepType(t *testing.T) {
 
 func TestVMResetStepRequiresNode(t *testing.T) {
 	// VMResetStep should NOT skip based on Ready status — it always proceeds.
-	// The cooldown check in the lifecycle manager handles "already remediated".
+	// The remediationCooldown check in the lifecycle manager handles "already remediated".
 	// This test verifies the step fails gracefully if the node doesn't exist.
 	clientset := fake.NewSimpleClientset() // no nodes
 	k8sClient := k8s.NewClient(clientset, nil)

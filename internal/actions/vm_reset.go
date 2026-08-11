@@ -6,9 +6,9 @@ import (
 	"log"
 	"time"
 
-	"cmk-node-remediation/internal/actions/helpers"
-	"cmk-node-remediation/internal/crusoe"
-	"cmk-node-remediation/internal/k8s"
+	"crusoe-node-remediation/internal/actions/helpers"
+	"crusoe-node-remediation/internal/crusoe"
+	"crusoe-node-remediation/internal/k8s"
 )
 
 // VMResetStep reboots a VM via the Crusoe API and waits for the node to become Ready.
@@ -28,7 +28,7 @@ func (s *VMResetStep) Run(ctx context.Context, node NodeInfo, params map[string]
 	// Capture bootID before reset — this is our "before" snapshot.
 	// Note: We do NOT skip based on node Ready status, because the node is
 	// always Ready when we start (the B200 60-day bug is about firmware uptime,
-	// not node health). The cooldown check in the lifecycle manager handles
+	// not node health). The remediationCooldown check in the remediation manager handles
 	// "already remediated" — this step always proceeds with the reset.
 	k8sNode, err := s.k8sClient.GetNode(ctx, node.Name)
 	if err != nil {

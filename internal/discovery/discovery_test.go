@@ -8,9 +8,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
-	"cmk-node-remediation/internal/config"
-	"cmk-node-remediation/internal/constants"
-	"cmk-node-remediation/internal/k8s"
+	"crusoe-node-remediation/internal/config"
+	"crusoe-node-remediation/internal/constants"
+	"crusoe-node-remediation/internal/k8s"
 )
 
 func TestDiscoverNodes(t *testing.T) {
@@ -52,7 +52,7 @@ func TestDiscoverNodes(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		VMInstanceTypeFilter: "b200.*",
+		InstanceTypeFilter: "b200.*",
 		NodeSelector: config.NodeSelectorConfig{
 			MatchLabels: map[string]string{
 				constants.LabelProjectID: "proj-1",
@@ -81,7 +81,7 @@ func TestDiscoverNoNodes(t *testing.T) {
 	clientset := fake.NewSimpleClientset()
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		VMInstanceTypeFilter: "b200.*",
+		InstanceTypeFilter: "b200.*",
 		NodeSelector: config.NodeSelectorConfig{
 			MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"},
 		},

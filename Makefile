@@ -1,6 +1,6 @@
 .PHONY: build test lint vendor docker-build docker-push clean
 
-BINARY_NAME=cmk-node-remediation
+BINARY_NAME=crusoe-node-remediation
 IMAGE_TAG?=v0.0.1
 IMAGE_REPO=registry.your-location.ccr.crusoecloudcompute.com/crusoe-node-remediation.your-project-id
 

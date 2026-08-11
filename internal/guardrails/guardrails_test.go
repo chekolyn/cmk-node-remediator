@@ -3,7 +3,7 @@ package guardrails
 import (
 	"testing"
 
-	"cmk-node-remediation/internal/config"
+	"crusoe-node-remediation/internal/config"
 )
 
 func TestCanCordonAbsoluteLimits(t *testing.T) {

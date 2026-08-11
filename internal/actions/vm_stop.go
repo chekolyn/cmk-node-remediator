@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	"cmk-node-remediation/internal/crusoe"
+	"crusoe-node-remediation/internal/crusoe"
 )
 
 // VMStopStep stops a VM via the Crusoe API.

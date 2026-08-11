@@ -6,9 +6,9 @@ import (
 	"log"
 	"time"
 
-	"cmk-node-remediation/internal/actions/helpers"
-	"cmk-node-remediation/internal/crusoe"
-	"cmk-node-remediation/internal/k8s"
+	"crusoe-node-remediation/internal/actions/helpers"
+	"crusoe-node-remediation/internal/crusoe"
+	"crusoe-node-remediation/internal/k8s"
 )
 
 // VMStartStep starts a VM via the Crusoe API and waits for the node to become Ready.

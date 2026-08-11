@@ -9,7 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
-	"cmk-node-remediation/internal/k8s"
+	"crusoe-node-remediation/internal/k8s"
 )
 
 func TestCaptureBootID(t *testing.T) {

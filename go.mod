@@ -1,4 +1,4 @@
-module cmk-node-remediation
+module crusoe-node-remediation
 
 go 1.25.0
 

@@ -26,7 +26,7 @@ const (
 	AnnotationAttempt            = "crusoe.ai/remediation.attempt"
 	AnnotationLastAction         = "crusoe.ai/remediation.last-action"
 
-	ManagedByValue = "cmk-node-remediation"
+	ManagedByValue = "crusoe-node-remediation"
 )
 
 // Taint key constants.
@@ -36,7 +36,7 @@ const (
 	TaintMaintenance = "crusoe.ai/remediation.maintenance"
 )
 
-// Phase represents a node lifecycle state.
+// Phase represents a node remediation state.
 type Phase string
 
 const (

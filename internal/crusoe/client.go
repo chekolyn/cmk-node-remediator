@@ -39,7 +39,7 @@ func NewClient(apiURL, apiKey, projectID string) *Client {
 	}
 }
 
-// GetVMState queries the Crusoe API for a VM's current lifecycle state.
+// GetVMState queries the Crusoe API for a VM's current state.
 func (c *Client) GetVMState(ctx context.Context, instanceID string) (string, error) {
 	vm, _, err := c.vmsAPI.GetInstance(ctx, c.projectID, instanceID)
 	if err != nil {

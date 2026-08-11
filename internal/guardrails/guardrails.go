@@ -1,7 +1,7 @@
 package guardrails
 
 import (
-	"cmk-node-remediation/internal/config"
+	"crusoe-node-remediation/internal/config"
 )
 
 // Checker enforces concurrency limits for cordoned/draining/remediation nodes.

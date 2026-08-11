@@ -133,27 +133,19 @@ type NodeSelectorConfig struct {
 // Config holds all configuration for the node remediation manager.
 type Config struct {
 	Schedule                string             `yaml:"schedule"`
-	VMInstanceTypeFilter    string             `yaml:"vmInstanceTypeFilter,omitempty"`
+	InstanceTypeFilter    string             `yaml:"instanceTypeFilter,omitempty"`
 	CordonThreshold         Duration           `yaml:"cordonThreshold"`
-	ActionThreshold         Duration           `yaml:"actionThreshold"`
-	Cooldown                Duration           `yaml:"cooldown"`
+	RemediationThreshold         Duration           `yaml:"remediationThreshold"`
+	RemediationCooldown                Duration           `yaml:"remediationCooldown"`
 	Action                  ActionConfig       `yaml:"action"`
 	Guardrails              GuardrailsConfig   `yaml:"guardrails"`
 	DrainTimeout            time.Duration      `yaml:"drainTimeout"`
-	ForceDrainAfterTimeout  bool               `yaml:"forceDrainAfterTimeout"`
+	ForceAfterEvictionFailure             bool               `yaml:"forceAfterEvictionFailure"`
 	CrusoeAPISecret         string             `yaml:"crusoeApiSecret"`
 	CrusoeProjectID         string             `yaml:"crusoeProjectId"`
 	DryRun                  bool               `yaml:"dryRun"`
 	SlackWebhookURL         string             `yaml:"slackWebhookUrl,omitempty"`
 	NodeSelector            NodeSelectorConfig `yaml:"nodeSelector,omitempty"`
-	NodePriority            string             `yaml:"nodePriority"` // highest-uptime | lowest-uptime | none
-}
-
-// ValidNodePriority lists the supported node priority strategies.
-var ValidNodePriority = map[string]bool{
-	"highest-uptime": true,
-	"lowest-uptime":  true,
-	"none":           true,
 }
 
 // ValidStepTypes lists the supported remediation step types.
@@ -173,13 +165,22 @@ func LoadFromYAML(data []byte) (*Config, error) {
 	return cfg, nil
 }
 
+// CordonDuration returns the cordon threshold as a time.Duration.
+func (c *Config) CordonDuration() time.Duration { return time.Duration(c.CordonThreshold) }
+
+// RemediationThresholdDuration returns the remediation threshold as a time.Duration.
+func (c *Config) RemediationThresholdDuration() time.Duration { return time.Duration(c.RemediationThreshold) }
+
+// RemediationCooldownDuration returns the remediation cooldown as a time.Duration.
+func (c *Config) RemediationCooldownDuration() time.Duration { return time.Duration(c.RemediationCooldown) }
+
 func defaultConfig() *Config {
 	return &Config{
 		Schedule:             "0 0 * * *",
-		VMInstanceTypeFilter: "b200.*",
+		InstanceTypeFilter: "b200.*",
 		CordonThreshold:      Duration(55 * 24 * time.Hour), // 55 days
-		ActionThreshold:      Duration(60 * 24 * time.Hour), // 60 days
-		Cooldown:             Duration(7 * 24 * time.Hour),   // 7 days
+		RemediationThreshold:      Duration(60 * 24 * time.Hour), // 60 days
+		RemediationCooldown:             Duration(7 * 24 * time.Hour),   // 7 days
 		Action: ActionConfig{
 			Type:       "vm-reset",
 			Timeout:    30 * time.Minute,
@@ -190,24 +191,20 @@ func defaultConfig() *Config {
 			PerPoolMaxCordoned: 2,
 		},
 		DrainTimeout:           10 * time.Minute,
-		ForceDrainAfterTimeout: true,
+		ForceAfterEvictionFailure:             true,
 		DryRun:                 false,
-		NodePriority:           "highest-uptime",
 	}
 }
 
 func (c *Config) Validate() error {
-	if c.CordonThreshold >= c.ActionThreshold {
-		return fmt.Errorf("cordonThreshold (%v) must be less than actionThreshold (%v)", c.CordonThreshold, c.ActionThreshold)
+	if c.CordonThreshold >= c.RemediationThreshold {
+		return fmt.Errorf("cordonThreshold (%v) must be less than remediationThreshold (%v)", c.CordonThreshold, c.RemediationThreshold)
 	}
 	if c.CordonThreshold <= 0 {
 		return fmt.Errorf("cordonThreshold must be positive")
 	}
-	if c.Cooldown < 0 {
-		return fmt.Errorf("cooldown must be non-negative")
-	}
-	if c.NodePriority != "" && !ValidNodePriority[c.NodePriority] {
-		return fmt.Errorf("invalid nodePriority %q: must be one of highest-uptime, lowest-uptime, none", c.NodePriority)
+	if c.RemediationCooldown < 0 {
+		return fmt.Errorf("remediationCooldown must be non-negative")
 	}
 	if c.CrusoeAPISecret == "" {
 		return fmt.Errorf("crusoeApiSecret must be set")

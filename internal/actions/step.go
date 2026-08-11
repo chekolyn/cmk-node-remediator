@@ -6,10 +6,10 @@ import (
 	"log"
 	"time"
 
-	"cmk-node-remediation/internal/actions/helpers"
-	"cmk-node-remediation/internal/config"
-	"cmk-node-remediation/internal/crusoe"
-	"cmk-node-remediation/internal/k8s"
+	"crusoe-node-remediation/internal/actions/helpers"
+	"crusoe-node-remediation/internal/config"
+	"crusoe-node-remediation/internal/crusoe"
+	"crusoe-node-remediation/internal/k8s"
 )
 
 // NodeInfo holds metadata about a node being remediated.

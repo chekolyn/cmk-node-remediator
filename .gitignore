@@ -13,7 +13,7 @@ vendor/
 *.dylib
 *.test
 *.out
-node-reboot-manager
+crusoe-node-remediation*
 
 # IDE
 .vscode/
@@ -22,10 +22,13 @@ node-reboot-manager
 *.swo
 *~
 
+# VS Code sessions
+.pi/
+
 # OS
 .DS_Store
 Thumbs.db
 e2e/local.env
 e2e/values-generated.yaml
-e2e/values-generated.yaml
+e2e/values.yaml
 e2e/values.yaml
