@@ -1,3 +1,6 @@
+# Git worktrees (local only)
+.worktrees/
+
 # Superpowers plans/notes (local only)
 docs/superpowers/
 
