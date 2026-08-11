@@ -136,7 +136,8 @@ func (c *Client) DeleteVM(ctx context.Context, instanceID string) (string, error
 
 		lastErr = err
 		errStr := err.Error()
-		if strings.Contains(errStr, "429") ||
+		if strings.Contains(errStr, "409") || // Conflict — another operation in progress
+			strings.Contains(errStr, "429") ||
 			strings.Contains(errStr, "500") ||
 			strings.Contains(errStr, "502") ||
 			strings.Contains(errStr, "503") ||
@@ -217,7 +218,8 @@ func (c *Client) updateVMAction(ctx context.Context, instanceID, action string) 
 
 		lastErr = err
 		errStr := err.Error()
-		if strings.Contains(errStr, "429") ||
+		if strings.Contains(errStr, "409") || // Conflict — another operation in progress
+			strings.Contains(errStr, "429") ||
 			strings.Contains(errStr, "500") ||
 			strings.Contains(errStr, "502") ||
 			strings.Contains(errStr, "503") ||
