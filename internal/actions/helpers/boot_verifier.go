@@ -66,6 +66,7 @@ func (v *BootVerifier) VerifyBoot(ctx context.Context, nodeName, oldBootID strin
 			return newBootID, nil
 		}
 
+		log.Printf("boot verifier: node %s bootID unchanged (current=%s), polling...", nodeName, newBootID)
 		sleepOrCancel(ctx, pollInterval)
 	}
 

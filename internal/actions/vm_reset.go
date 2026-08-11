@@ -35,6 +35,7 @@ func (s *VMResetStep) Run(ctx context.Context, node NodeInfo, params map[string]
 		return fmt.Errorf("step vm-reset: failed to get node %s: %w", node.Name, err)
 	}
 	oldBootID := k8sNode.Status.NodeInfo.BootID
+	log.Printf("step vm-reset: node %s bootID before reset: %s", node.Name, oldBootID)
 
 	// 3. Act + verify with retries
 	var lastErr error
@@ -49,6 +50,7 @@ func (s *VMResetStep) Run(ctx context.Context, node NodeInfo, params map[string]
 			sleepOrCancel(ctx, time.Duration(1<<uint(attempt-1))*time.Second)
 			continue
 		}
+		log.Printf("step vm-reset: API RESET accepted for VM %s, operation ID: %s", node.InstanceID, opID)
 
 		// Phase 1: Poll operation completion
 		if opID != "" {
@@ -57,6 +59,7 @@ func (s *VMResetStep) Run(ctx context.Context, node NodeInfo, params map[string]
 				log.Printf("step vm-reset: operation wait failed (attempt %d): %v", attempt, err)
 				continue
 			}
+			log.Printf("step vm-reset: operation %s completed for VM %s", opID, node.InstanceID)
 		}
 
 		// Phase 2: Verify boot happened + node is Ready
@@ -64,6 +67,12 @@ func (s *VMResetStep) Run(ctx context.Context, node NodeInfo, params map[string]
 			lastErr = err
 			log.Printf("step vm-reset: boot verification failed (attempt %d): %v", attempt, err)
 			continue
+		}
+
+		// Log post-reset bootID for evidence
+		if postNode, err := s.k8sClient.GetNode(ctx, node.Name); err == nil {
+			log.Printf("step vm-reset: node %s bootID after reset: %s (changed: %v)",
+				node.Name, postNode.Status.NodeInfo.BootID, postNode.Status.NodeInfo.BootID != oldBootID)
 		}
 
 		return nil
