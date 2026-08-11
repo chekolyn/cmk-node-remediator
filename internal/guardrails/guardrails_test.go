@@ -47,12 +47,12 @@ func TestCanCordonGlobalPercentWithDifferentTotals(t *testing.T) {
 	checker := NewChecker(cfg)
 
 	// 458 global total (like a large customer), 50 pool total
-	// 10% of 458 = 45 global max; 5 pool max
-	if !checker.CanCordon(44, 4, 458, 50) {
-		t.Error("CanCordon(44, 4, 458, 50) = false, want true")
+	// 10% of 458 = 45.8 → ceil → 46 global max; 5 pool max
+	if !checker.CanCordon(45, 4, 458, 50) {
+		t.Error("CanCordon(45, 4, 458, 50) = false, want true")
 	}
-	if checker.CanCordon(45, 4, 458, 50) {
-		t.Error("CanCordon(45, 4, 458, 50) = true, want false (global % limit)")
+	if checker.CanCordon(46, 4, 458, 50) {
+		t.Error("CanCordon(46, 4, 458, 50) = true, want false (global % limit)")
 	}
 }
 
@@ -81,5 +81,43 @@ func TestMaxAllowed(t *testing.T) {
 	}
 	if pMax != 2 {
 		t.Errorf("poolMax = %d, want 2", pMax)
+	}
+}
+
+func TestPercentCeilingDivision(t *testing.T) {
+	// Edge cases that were broken with floor division:
+	// 9 nodes * 10% = 0.9 → ceiling → 1
+	// 4 nodes * 20% = 0.8 → ceiling → 1
+	// 3 nodes * 25% = 0.75 → ceiling → 1
+	// 19 nodes * 5% = 0.95 → ceiling → 1
+
+	tests := []struct {
+		name      string
+		pct       int
+		total     int
+		wantLimit int
+	}{
+		{"9 nodes, 10%", 10, 9, 1},
+		{"4 nodes, 20%", 20, 4, 1},
+		{"3 nodes, 25%", 25, 3, 1},
+		{"19 nodes, 5%", 5, 19, 1},
+		{"10 nodes, 10%", 10, 10, 1},
+		{"15 nodes, 10%", 10, 15, 2},
+		{"20 nodes, 5%", 5, 20, 1},
+		{"100 nodes, 10%", 10, 100, 10},
+		{"0 nodes, 10%", 10, 0, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.GuardrailsConfig{
+				GlobalMaxCordonedPercent: &tt.pct,
+			}
+			checker := NewChecker(cfg)
+			gMax, _ := checker.MaxAllowed(tt.total, 0)
+			if gMax != tt.wantLimit {
+				t.Errorf("globalMax = %d, want %d", gMax, tt.wantLimit)
+			}
+		})
 	}
 }

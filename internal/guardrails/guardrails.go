@@ -1,6 +1,8 @@
 package guardrails
 
 import (
+	"math"
+
 	"crusoe-node-remediation/internal/config"
 )
 
@@ -41,7 +43,9 @@ func (c *Checker) globalLimit(globalTotal int) int {
 	abs := c.cfg.GlobalMaxCordoned
 	pct := -1
 	if c.cfg.GlobalMaxCordonedPercent != nil {
-		pct = (*c.cfg.GlobalMaxCordonedPercent * globalTotal) / 100
+		// Use Ceil so small clusters always get at least 1 slot.
+		// E.g. 9 nodes × 10% = 0.9 → ceil → 1 (floor would give 0, blocking all remediation).
+		pct = int(math.Ceil(float64(*c.cfg.GlobalMaxCordonedPercent*globalTotal) / 100.0))
 	}
 	if abs > 0 && pct >= 0 {
 		return min(abs, pct)
@@ -59,7 +63,8 @@ func (c *Checker) poolLimit(poolTotal int) int {
 	abs := c.cfg.PerPoolMaxCordoned
 	pct := -1
 	if c.cfg.PerPoolMaxCordonedPercent != nil {
-		pct = (*c.cfg.PerPoolMaxCordonedPercent * poolTotal) / 100
+		// Use Ceil so small pools always get at least 1 slot (same reasoning as globalLimit).
+		pct = int(math.Ceil(float64(*c.cfg.PerPoolMaxCordonedPercent*poolTotal) / 100.0))
 	}
 	if abs > 0 && pct >= 0 {
 		return min(abs, pct)
