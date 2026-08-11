@@ -41,6 +41,7 @@ func (v *BootVerifier) CaptureBootID(ctx context.Context, nodeName string) (stri
 // VerifyBoot polls until the node's bootID differs from the given one,
 // confirming a boot occurred. Returns the new bootID.
 func (v *BootVerifier) VerifyBoot(ctx context.Context, nodeName, oldBootID string, timeout time.Duration) (string, error) {
+	log.Printf("boot verifier: waiting for bootID change on node %s (old=%s, timeout=%s)", nodeName, oldBootID, timeout)
 	deadline := time.Now().Add(timeout)
 	pollInterval := 10 * time.Second
 
@@ -61,6 +62,7 @@ func (v *BootVerifier) VerifyBoot(ctx context.Context, nodeName, oldBootID strin
 
 		newBootID := node.Status.NodeInfo.BootID
 		if newBootID != "" && newBootID != oldBootID {
+			log.Printf("boot verifier: bootID changed on node %s (old=%s, new=%s)", nodeName, oldBootID, newBootID)
 			return newBootID, nil
 		}
 
@@ -79,6 +81,7 @@ func (v *BootVerifier) VerifyBootAndReady(ctx context.Context, nodeName, oldBoot
 	}
 
 	// Second: wait for node Ready (boot completed)
+	log.Printf("boot verifier: waiting for node %s to become Ready", nodeName)
 	deadline := time.Now().Add(timeout)
 	pollInterval := 30 * time.Second
 	// Use shorter poll interval if timeout is short (for testing)
@@ -103,6 +106,7 @@ func (v *BootVerifier) VerifyBootAndReady(ctx context.Context, nodeName, oldBoot
 		}
 
 		if k8s.IsNodeReady(node) {
+			log.Printf("boot verifier: node %s is Ready", nodeName)
 			return nil
 		}
 
