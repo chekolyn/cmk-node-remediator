@@ -13,7 +13,8 @@ vendor/
 *.dylib
 *.test
 *.out
-crusoe-node-remediation*
+/crusoe-node-remediation
+/crusoe-node-remediation-validate
 
 # IDE
 .vscode/

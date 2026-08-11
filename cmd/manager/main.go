@@ -105,8 +105,15 @@ func main() {
 	// 9. Create K8s Event recorder
 	// Use direct API event creation instead of the broadcaster to prevent
 	// event dropping when multiple nodes are remediated in quick succession.
+	// Events are recorded in the pod's namespace (via POD_NAMESPACE env var)
+	// so they appear alongside the CronJob, not in the default namespace.
+	eventNamespace := os.Getenv("POD_NAMESPACE")
+	if eventNamespace == "" {
+		eventNamespace = "default"
+	}
 	recorder := &directEventRecorder{
-		events: k8sClientset.CoreV1().Events("default"),
+		events: k8sClientset.CoreV1().Events(eventNamespace),
+		namespace: eventNamespace,
 	}
 
 	// 10. Create uptime evaluator (uses K8s client for stats summary)
@@ -152,7 +159,8 @@ func (e *k8sUptimeEvaluator) GetNodeStartTime(ctx context.Context, nodeName stri
 // using the broadcaster, which can drop events when multiple nodes are
 // remediated in quick succession.
 type directEventRecorder struct {
-	events typedcorev1.EventInterface
+	events    typedcorev1.EventInterface
+	namespace string
 }
 
 func (r *directEventRecorder) Event(obj runtime.Object, eventType, reason, message string) {
@@ -179,7 +187,7 @@ func (r *directEventRecorder) createEvent(obj runtime.Object, eventType, reason,
 	_, err := r.events.Create(context.Background(), &corev1.Event{
 		ObjectMeta: v1.ObjectMeta{
 			GenerateName: "crusoe-node-remediation-",
-			Namespace:    "default",
+			Namespace:    r.namespace,
 		},
 		InvolvedObject: corev1.ObjectReference{
 			Kind:       "Node",
