@@ -39,24 +39,37 @@ func (dm *DrainManager) ForceAfterEvictionFailure(ctx context.Context, nodeName 
 }
 
 func (dm *DrainManager) runDrain(ctx context.Context, nodeName string, force bool) error {
+	// Drain configuration mirrors the recommended kubectl drain flags:
+	//   kubectl drain --delete-emptydir-data --ignore-daemonsets <node>
+	//
+	// DeleteEmptyDirData: Continue evicting even if pods use emptyDir volumes
+	//   (local data that is deleted when the pod is removed). This is safe for
+	//   stateless pods like victoria-metrics-agent whose emptyDir is only a
+	//   transient scrape buffer. Without this, drain fails with:
+	//     "cannot delete Pods with local storage (use --delete-emptydir-data
+	//     to override)"
+	//   See: https://kubernetes.io/docs/tasks/administer-cluster/safely-drain-node/
+	//
+	// IgnoreAllDaemonSets: Skip DaemonSet-managed pods. The DaemonSet controller
+	//   immediately recreates them on the node, so evicting is pointless.
+	//
+	// GracePeriodSeconds: -1 uses each pod's configured grace period.
 	drainer := &drain.Helper{
 		Ctx:                 ctx,
 		Client:              dm.clientset,
 		Force:               force,
 		GracePeriodSeconds:  -1,
 		IgnoreAllDaemonSets: true,
+		DeleteEmptyDirData:  true,
 		Timeout:             dm.timeout,
 		Out:                 io.Discard,
 		ErrOut:              io.Discard,
 	}
 
 	if force {
-		// Force drain: delete emptyDir data so pods with local storage can be evicted.
-		// Do NOT disable eviction — that causes the drainer to try deleting DaemonSet
-		// pods directly, which fails with "cannot delete daemonsets.apps".
-		// With eviction enabled, DaemonSet pods are skipped (IgnoreAllDaemonSets=true)
-		// and the rest are evicted ignoring PDBs (Force=true).
-		drainer.DeleteEmptyDirData = true
+		// Force drain: bypass PDBs by using delete instead of eviction.
+		// DeleteEmptyDirData is already set above (shared with graceful drain).
+		drainer.DisableEviction = true
 	}
 
 	node, err := dm.clientset.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
