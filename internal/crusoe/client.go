@@ -2,6 +2,7 @@ package crusoe
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -39,11 +40,34 @@ func NewClient(apiURL, apiKey, projectID string) *Client {
 	}
 }
 
+// swaggerError is the interface satisfied by the SDK's GenericSwaggerError.
+// Using an interface allows testing without constructing the SDK type directly
+// (its fields are unexported).
+type swaggerError interface {
+	Error() string
+	Body() []byte
+}
+
+// detailError extracts the HTTP response body from a GenericSwaggerError
+// to provide actionable diagnostics (e.g. "401 Unauthorized" → "invalid token").
+// The swagger SDK's Error() only returns a generic status string; the Body()
+// method has the actual API error message.
+func detailError(err error) string {
+	var se swaggerError
+	if errors.As(err, &se) {
+		body := se.Body()
+		if len(body) > 0 {
+			return fmt.Sprintf("%s [response: %s]", err.Error(), strings.TrimSpace(string(body)))
+		}
+	}
+	return err.Error()
+}
+
 // GetVMState queries the Crusoe API for a VM's current state.
 func (c *Client) GetVMState(ctx context.Context, instanceID string) (string, error) {
 	vm, _, err := c.vmsAPI.GetInstance(ctx, c.projectID, instanceID)
 	if err != nil {
-		return "", fmt.Errorf("Crusoe API GetInstance failed for VM %s: %w", instanceID, err)
+		return "", fmt.Errorf("Crusoe API GetInstance failed for VM %s: %s", instanceID, detailError(err))
 	}
 	return vm.State, nil
 }
@@ -100,10 +124,10 @@ func (c *Client) DeleteVM(ctx context.Context, instanceID string) (string, error
 			continue
 		}
 
-		return "", fmt.Errorf("Crusoe API delete failed for VM %s: %w", instanceID, err)
+		return "", fmt.Errorf("Crusoe API delete failed for VM %s: %s", instanceID, detailError(err))
 	}
 
-	return "", fmt.Errorf("DeleteVM failed after %d retries: %w", maxRetries, lastErr)
+	return "", fmt.Errorf("DeleteVM failed after %d retries: %s", maxRetries, detailError(lastErr))
 }
 
 // WaitForOperation polls the VMOperationsApi until the async operation completes.
@@ -181,10 +205,10 @@ func (c *Client) updateVMAction(ctx context.Context, instanceID, action string) 
 			continue
 		}
 
-		return "", fmt.Errorf("Crusoe API %s failed for VM %s: %w", action, instanceID, err)
+		return "", fmt.Errorf("Crusoe API %s failed for VM %s: %s", action, instanceID, detailError(err))
 	}
 
-	return "", fmt.Errorf("%s failed after %d retries: %w", action, maxRetries, lastErr)
+	return "", fmt.Errorf("%s failed after %d retries: %s", action, maxRetries, detailError(lastErr))
 }
 
 // calculateUptimes is a pure function for testing uptime calculation.
