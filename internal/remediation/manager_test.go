@@ -2486,3 +2486,93 @@ func TestSelfNodeExclusionWithEnvNotSet(t *testing.T) {
 		t.Errorf("drain should be called 3 times (no self-node exclusion), got %d", drainMgr.drainCount)
 	}
 }
+
+// TDD Test: Stuck node in action-running with attempt < maxRetries should be
+// retried on the next run, even when the guardrail is full.
+//
+// Scenario: 1 node is stuck in action-running (failed vm-reset, attempt=1,
+// maxRetries=2). perPoolMaxCordoned=1, so the guardrail is full. The next run
+// should retry the stuck node instead of skipping it with "guardrail exceeded".
+func TestStuckNodeRetriedDespiteGuardrailFull(t *testing.T) {
+	clientset := fake.NewSimpleClientset(
+		// Node stuck in action-running, attempt=1 (below maxRetries=2)
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-stuck",
+				Labels: map[string]string{
+					constants.LabelNodepoolID:        "pool-a",
+					constants.LabelInstanceID:        "vm-stuck",
+					constants.LabelProjectID:         "proj-1",
+					constants.LabelInstanceType:      "b200-180gb-sxm-ib.8x",
+					constants.LabelRemediationManaged: "true",
+					constants.LabelRemediationPhase:   string(constants.PhaseActionRunning),
+				},
+				Annotations: map[string]string{
+					constants.AnnotationAttempt:        "1",
+					constants.AnnotationCordonedAt:     time.Now().AddDate(0, 0, -1).Format(time.RFC3339),
+					constants.AnnotationDrainStartedAt: time.Now().AddDate(0, 0, -1).Format(time.RFC3339),
+				},
+			},
+			Spec: corev1.NodeSpec{Unschedulable: true},
+		},
+	)
+
+	k8sClient := k8s.NewClient(clientset, nil)
+	cfg := &config.Config{
+		CordonThreshold:      config.Duration(10 * time.Minute),
+		RemediationThreshold: config.Duration(20 * time.Minute),
+		RemediationCooldown:  config.Duration(7 * 24 * time.Hour),
+		DryRun:               false,
+		InstanceTypeFilter:   "b200.*",
+		Action:               config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 2},
+		Guardrails:           config.GuardrailsConfig{GlobalMaxCordoned: 1, PerPoolMaxCordoned: 1},
+		DrainTimeout:         1 * time.Second,
+		ForceAfterEvictionFailure: true,
+		CrusoeAPISecret:      "test-secret",
+		CrusoeProjectID:      "proj-1",
+		NodeSelector:         config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+	}
+
+	drainMgr := &mockDrainMgr{}
+	stepFactory := &mockStepCreator{step: &actions.NoopStep{}}
+
+	deps := Dependencies{
+		K8sClient:    k8sClient,
+		DrainMgr:     drainMgr,
+		StepFactory:  stepFactory,
+		UptimeEval:   &mockUptimeEvaluator{startTime: time.Now().AddDate(0, 0, -1)}, // 1 day uptime > 20m threshold
+		GuardChecker: guardrails.NewChecker(cfg.Guardrails),
+		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
+		Config:       cfg,
+		Recorder:     record.NewFakeRecorder(20),
+	}
+
+	mgr := NewManager(deps)
+	err := mgr.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	// The stuck node should have been retried — drain should be called
+	if !drainMgr.drainCalled {
+		t.Error("drain should have been called to retry the stuck node, but it was skipped (guardrail deadlock)")
+	}
+
+	// The node should be uncordoned (remediation succeeded on retry)
+	node, _ := clientset.CoreV1().Nodes().Get(context.Background(), "node-stuck", metav1.GetOptions{})
+	if node.Spec.Unschedulable {
+		t.Error("node should be uncordoned after successful retry")
+	}
+
+	// Attempt should be reset to 0 after successful remediation
+	attempt := node.Annotations[constants.AnnotationAttempt]
+	if attempt != "0" {
+		t.Errorf("attempt annotation = %q, want %q (reset after successful retry)", attempt, "0")
+	}
+
+	// Phase should be back to monitored
+	phase := node.Labels[constants.LabelRemediationPhase]
+	if phase != string(constants.PhaseMonitored) {
+		t.Errorf("phase = %q, want %q (should be monitored after successful retry)", phase, string(constants.PhaseMonitored))
+	}
+}

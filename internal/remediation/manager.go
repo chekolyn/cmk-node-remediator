@@ -344,7 +344,15 @@ func (m *Manager) handleCordonNode(ctx context.Context, nodeInfo discovery.NodeI
 }
 
 func (m *Manager) handleRemediateNode(ctx context.Context, nodeInfo discovery.NodeInfo, uptime time.Duration, globalActive, poolActive *int, globalTotal, poolTotal int) error {
-	if !m.deps.GuardChecker.CanCordon(*globalActive, *poolActive, globalTotal, poolTotal) {
+	// If the node is already in an active remediation phase, it was being
+	// remediated by a previous run that didn't complete. Skip the guardrail
+	// check — the node already holds a slot, so retrying it doesn't exceed
+	// the limit. Without this, stuck nodes deadlock: they count toward the
+	// guardrail but can never be retried, blocking all other nodes too.
+	currentPhase := constants.Phase(nodeInfo.Node.Labels[constants.LabelRemediationPhase])
+	isRetry := currentPhase.IsActive()
+
+	if !isRetry && !m.deps.GuardChecker.CanCordon(*globalActive, *poolActive, globalTotal, poolTotal) {
 		gMax, pMax := m.deps.GuardChecker.MaxAllowed(globalTotal, poolTotal)
 		log.Printf("skipping node %s: guardrail exceeded (remediating=%d/%d global, %d/%d pool)",
 			nodeInfo.Name, *globalActive, gMax, *poolActive, pMax)
@@ -384,9 +392,13 @@ log.Printf("remediating node %s with action %s (uptime %s)",
 	m.deps.K8sClient.AddTaint(ctx, nodeInfo.Name, constants.TaintScheduled)
 	m.deps.K8sClient.SetAnnotation(ctx, nodeInfo.Name, constants.AnnotationCordonedAt, time.Now().UTC().Format(time.RFC3339))
 
-	// Increment guardrail counters — this node is now being remediated
-	*globalActive++
-	*poolActive++
+	// Increment guardrail counters — this node is now being remediated.
+	// Only increment for new remediations, not retries (the node already
+	// holds a guardrail slot from the previous run).
+	if !isRetry {
+		*globalActive++
+		*poolActive++
+	}
 
 	// 2. Drain
 	m.deps.K8sClient.SetLabel(ctx, nodeInfo.Name, constants.LabelRemediationPhase, string(constants.PhaseDraining))
