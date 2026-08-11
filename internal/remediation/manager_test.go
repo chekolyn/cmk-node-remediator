@@ -2576,3 +2576,82 @@ func TestStuckNodeRetriedDespiteGuardrailFull(t *testing.T) {
 		t.Errorf("phase = %q, want %q (should be monitored after successful retry)", phase, string(constants.PhaseMonitored))
 	}
 }
+
+// TDD Test: Node cordoned by another engineer (not managed by us) should be
+// skipped, not remediated.
+//
+// Scenario: A node is cordoned (Spec.Unschedulable=true) by an engineer for
+// manual maintenance. It does NOT have our LabelRemediationManaged label.
+// Its uptime exceeds the remediation threshold. The tool should NOT drain,
+// reset, or uncordon it — it should be left alone.
+func TestSkipsNodeCordonedByEngineer(t *testing.T) {
+	clientset := fake.NewSimpleClientset(
+		// Node cordoned by an engineer — no remediation labels or annotations
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-manual",
+				Labels: map[string]string{
+					constants.LabelNodepoolID:   "pool-a",
+					constants.LabelInstanceID:   "vm-manual",
+					constants.LabelProjectID:    "proj-1",
+					constants.LabelInstanceType: "b200-180gb-sxm-ib.8x",
+					// No LabelRemediationManaged — not ours
+					// No LabelRemediationPhase — not in our state machine
+				},
+			},
+			Spec: corev1.NodeSpec{Unschedulable: true},
+		},
+	)
+
+	k8sClient := k8s.NewClient(clientset, nil)
+	cfg := &config.Config{
+		CordonThreshold:      config.Duration(10 * time.Minute),
+		RemediationThreshold: config.Duration(20 * time.Minute),
+		RemediationCooldown:  config.Duration(7 * 24 * time.Hour),
+		DryRun:               false,
+		InstanceTypeFilter:   "b200.*",
+		Action:               config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 2},
+		Guardrails:           config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+		DrainTimeout:         1 * time.Second,
+		ForceAfterEvictionFailure: true,
+		CrusoeAPISecret:      "test-secret",
+		CrusoeProjectID:      "proj-1",
+		NodeSelector:         config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+	}
+
+	drainMgr := &mockDrainMgr{}
+	stepFactory := &mockStepCreator{step: &actions.NoopStep{}}
+
+	deps := Dependencies{
+		K8sClient:    k8sClient,
+		DrainMgr:     drainMgr,
+		StepFactory:  stepFactory,
+		UptimeEval:   &mockUptimeEvaluator{startTime: time.Now().AddDate(0, 0, -61)}, // 61 days > 20m threshold
+		GuardChecker: guardrails.NewChecker(cfg.Guardrails),
+		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
+		Config:       cfg,
+		Recorder:     record.NewFakeRecorder(20),
+	}
+
+	mgr := NewManager(deps)
+	err := mgr.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	// Drain should NOT be called — this node was cordoned by an engineer
+	if drainMgr.drainCalled {
+		t.Error("drain should NOT be called on a node cordoned by another engineer")
+	}
+
+	// Node should still be cordoned — we didn't touch it
+	node, _ := clientset.CoreV1().Nodes().Get(context.Background(), "node-manual", metav1.GetOptions{})
+	if !node.Spec.Unschedulable {
+		t.Error("node should still be cordoned — we should not have uncordoned it")
+	}
+
+	// Node should NOT have our managed label
+	if node.Labels[constants.LabelRemediationManaged] == "true" {
+		t.Error("node should NOT have remediation.managed label — we should not adopt it")
+	}
+}
