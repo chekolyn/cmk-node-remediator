@@ -5,12 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"strings"
 	"time"
 
 	"github.com/antihax/optional"
 	"github.com/crusoecloud/client-go/auth"
-	crusoe "github.com/crusoecloud/client-go/swagger/v1alpha5"
+	crusoe "github.com/crusoecloud/client-go/swagger/v1"
 )
 
 // vmUptimeInfo is a lightweight struct for testing uptime calculation.
@@ -30,9 +31,17 @@ type Client struct {
 // NewClient creates a new Crusoe API client using HMAC auth (access/secret key pair).
 // The SDK's auth package signs each request with HMAC-SHA256, the same mechanism
 // used by the Crusoe CLI. This avoids the need for a separate bearer token.
+// Uses the v1 API (same as the Crusoe CLI) with default BasePath.
 func NewClient(apiURL, accessKey, secretKey, projectID string) *Client {
-	cfg := auth.NewAuthenticatedConfig(accessKey, secretKey)
-	cfg.BasePath = apiURL
+	cfg := crusoe.NewConfiguration()
+	if apiURL != "" {
+		cfg.BasePath = apiURL
+	}
+	// Wrap the HTTP client's transport with HMAC signing (same as Crusoe CLI)
+	if cfg.HTTPClient == nil {
+		cfg.HTTPClient = &http.Client{}
+	}
+	cfg.HTTPClient.Transport = auth.NewAuthenticatingTransport(cfg.HTTPClient.Transport, accessKey, secretKey)
 
 	apiClient := crusoe.NewAPIClient(cfg)
 
@@ -191,7 +200,7 @@ func (c *Client) WaitForOperation(ctx context.Context, operationID string, timeo
 // updateVMAction is a helper for UpdateInstance with retry logic.
 // Returns the operation ID for async polling.
 func (c *Client) updateVMAction(ctx context.Context, instanceID, action string) (string, error) {
-	patchReq := crusoe.InstancesPatchRequestV1Alpha5{
+	patchReq := crusoe.InstancesPatchRequestV1{
 		Action: action,
 	}
 
@@ -251,8 +260,8 @@ func calculateUptimes(vms []vmUptimeInfo, now time.Time) map[string]float64 {
 }
 
 // listInstances is a helper for testing that uses the SDK's ListInstances.
-func (c *Client) listInstances(ctx context.Context) ([]crusoe.InstanceV1Alpha5, error) {
-	var allVMs []crusoe.InstanceV1Alpha5
+func (c *Client) listInstances(ctx context.Context) ([]crusoe.InstanceV1, error) {
+	var allVMs []crusoe.InstanceV1
 	nextToken := ""
 	for {
 		opts := &crusoe.VMsApiListInstancesOpts{
