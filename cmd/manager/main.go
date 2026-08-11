@@ -31,6 +31,8 @@ func main() {
 
 	// --validate: load and validate config, then exit (for e2e/CI)
 	validateOnly := flag.Bool("validate", false, "validate config and exit")
+	// --verify-api: verify Crusoe API access and exit
+	verifyAPIOnly := flag.Bool("verify-api", false, "verify Crusoe API access and exit")
 	flag.Parse()
 
 	log.Println("crusoe-node-remediation starting")
@@ -99,7 +101,11 @@ func main() {
 	if err := crusoeClient.VerifyAccess(context.Background()); err != nil {
 		log.Fatalf("%v", err)
 	}
-	log.Println("Crusoe API access verified")
+
+	// If --verify-api, exit here (API access verified)
+	if *verifyAPIOnly {
+		os.Exit(0)
+	}
 
 	// 5. Create step factory
 	stepFactory := actions.NewFactory(k8sClient, crusoeClient)
