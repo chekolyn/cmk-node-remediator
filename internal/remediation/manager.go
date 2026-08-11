@@ -306,6 +306,15 @@ func (m *Manager) handleMonitoredNode(ctx context.Context, nodeInfo discovery.No
 }
 
 func (m *Manager) handleCordonNode(ctx context.Context, nodeInfo discovery.NodeInfo, uptime time.Duration, globalActive, poolActive *int, globalTotal, poolTotal int) {
+	// Guardrail: skip nodes cordoned by someone else. If the node is
+	// cordoned (Spec.Unschedulable=true) but NOT managed by us (no
+	// LabelRemediationManaged), an engineer cordoned it for manual
+	// maintenance — don't adopt it.
+	if k8s.IsCordoned(nodeInfo.Node) && nodeInfo.Node.Labels[constants.LabelRemediationManaged] != "true" {
+		log.Printf("skipping node %s: cordoned by another engineer (not managed by us)", nodeInfo.Name)
+		return
+	}
+
 	if !m.deps.GuardChecker.CanCordon(*globalActive, *poolActive, globalTotal, poolTotal) {
 		gMax, pMax := m.deps.GuardChecker.MaxAllowed(globalTotal, poolTotal)
 		log.Printf("skipping node %s: guardrail exceeded (remediating=%d/%d global, %d/%d pool)",

@@ -2655,3 +2655,76 @@ func TestSkipsNodeCordonedByEngineer(t *testing.T) {
 		t.Error("node should NOT have remediation.managed label — we should not adopt it")
 	}
 }
+
+// TDD Test: handleCordonNode should skip nodes already cordoned by an engineer.
+//
+// Scenario: A node at 55 days uptime (cordon threshold) is already cordoned
+// by an engineer for manual maintenance. It does NOT have our
+// LabelRemediationManaged label. The tool should NOT adopt it — no label,
+// no taints, no annotations.
+func TestSkipsEngineerCordonedNodeAtCordonThreshold(t *testing.T) {
+	clientset := fake.NewSimpleClientset(
+		// Node cordoned by an engineer — no remediation labels or annotations
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-manual-cordon",
+				Labels: map[string]string{
+					constants.LabelNodepoolID:   "pool-a",
+					constants.LabelInstanceID:   "vm-manual",
+					constants.LabelProjectID:    "proj-1",
+					constants.LabelInstanceType: "b200-180gb-sxm-ib.8x",
+					// No LabelRemediationManaged — not ours
+				},
+			},
+			Spec: corev1.NodeSpec{Unschedulable: true},
+		},
+	)
+
+	k8sClient := k8s.NewClient(clientset, nil)
+	cfg := &config.Config{
+		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
+		RemediationThreshold: config.Duration(60 * 24 * time.Hour),
+		DryRun:               false,
+		InstanceTypeFilter:   "b200.*",
+		Action:               config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 2},
+		Guardrails:           config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+		DrainTimeout:         1 * time.Second,
+		ForceAfterEvictionFailure: true,
+		CrusoeAPISecret:      "test-secret",
+		CrusoeProjectID:      "proj-1",
+		NodeSelector:         config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+	}
+
+	deps := Dependencies{
+		K8sClient:    k8sClient,
+		DrainMgr:     &mockDrainMgr{},
+		StepFactory:  &mockStepCreator{step: &actions.NoopStep{}},
+		UptimeEval:   &mockUptimeEvaluator{startTime: time.Now().AddDate(0, 0, -56)}, // 56 days > 55d cordon threshold
+		GuardChecker: guardrails.NewChecker(cfg.Guardrails),
+		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
+		Config:       cfg,
+		Recorder:     record.NewFakeRecorder(20),
+	}
+
+	mgr := NewManager(deps)
+	err := mgr.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	// Node should still be cordoned — we didn't touch it
+	node, _ := clientset.CoreV1().Nodes().Get(context.Background(), "node-manual-cordon", metav1.GetOptions{})
+	if !node.Spec.Unschedulable {
+		t.Error("node should still be cordoned")
+	}
+
+	// Node should NOT have our managed label
+	if node.Labels[constants.LabelRemediationManaged] == "true" {
+		t.Error("node should NOT have remediation.managed label — we should not adopt a node cordoned by an engineer")
+	}
+
+	// Node should NOT have our phase label
+	if node.Labels[constants.LabelRemediationPhase] != "" {
+		t.Errorf("node should NOT have remediation.phase label, got %q", node.Labels[constants.LabelRemediationPhase])
+	}
+}
