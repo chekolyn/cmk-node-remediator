@@ -42,17 +42,17 @@ func TestIntegrationFullRemediationWorkflow(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
+		CordonThreshold:           config.Duration(55 * 24 * time.Hour),
 		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
-		DryRun:                 false,
-		InstanceTypeFilter:   "b200.*",
-		Action:                 config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
-		Guardrails:             config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
-		DrainTimeout:           1 * time.Second,
+		DryRun:                    false,
+		InstanceTypeFilter:        "b200.*",
+		Action:                    config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:                config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+		DrainTimeout:              1 * time.Second,
 		ForceAfterEvictionFailure: true,
-		CrusoeAPISecret:        "test-secret",
-		CrusoeProjectID:        "proj-1",
-		NodeSelector:           config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
 	crusoeClient := crusoe.NewClient("http://localhost:9999", "test-access", "test-secret", "proj-1")
@@ -109,9 +109,9 @@ func TestIntegrationDryRunNoChanges(t *testing.T) {
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
 		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
-		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
+		RemediationThreshold: config.Duration(60 * 24 * time.Hour),
 		DryRun:               true,
-		InstanceTypeFilter: "b200.*",
+		InstanceTypeFilter:   "b200.*",
 		Action:               config.ActionConfig{Type: "vm-reset", Timeout: 30 * time.Minute, MaxRetries: 3},
 		Guardrails:           config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
 		DrainTimeout:         10 * time.Minute,
@@ -174,10 +174,10 @@ func TestIntegrationRemediationCooldownSkipsRemediation(t *testing.T) {
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
 		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
-		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
-		RemediationCooldown:             config.Duration(7 * 24 * time.Hour),
+		RemediationThreshold: config.Duration(60 * 24 * time.Hour),
+		RemediationCooldown:  config.Duration(7 * 24 * time.Hour),
 		DryRun:               false,
-		InstanceTypeFilter: "b200.*",
+		InstanceTypeFilter:   "b200.*",
 		Action:               config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
 		Guardrails:           config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
 		DrainTimeout:         10 * time.Minute,

@@ -1,8 +1,8 @@
 # Git worktrees (local only)
 .worktrees/
 
-# Superpowers plans/notes (local only)
-docs/superpowers/
+# Internal docs (not for public repo)
+docs/
 
 # Go
 vendor/
@@ -13,8 +13,7 @@ vendor/
 *.dylib
 *.test
 *.out
-/crusoe-node-remediation
-/crusoe-node-remediation-validate
+/bin/
 
 # IDE
 .vscode/
@@ -29,6 +28,9 @@ vendor/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local dev config (image repo, tags, etc.)
+.env
 e2e/local.env
 e2e/values-generated.yaml
 e2e/values.yaml

@@ -15,11 +15,11 @@ import (
 // Idempotent: if the node is already Ready, it skips the API call.
 // Two-phase verification: (1) poll Crusoe operation completion, (2) poll K8s bootID + Ready.
 type VMResetStep struct {
-	crusoeClient  *crusoe.Client
+	crusoeClient *crusoe.Client
 	k8sClient    *k8s.Client
-	bootVerifier  *helpers.BootVerifier
-	timeout       time.Duration
-	maxRetries    int
+	bootVerifier *helpers.BootVerifier
+	timeout      time.Duration
+	maxRetries   int
 }
 
 func (s *VMResetStep) Type() string { return "vm-reset" }
@@ -50,7 +50,7 @@ func (s *VMResetStep) Run(ctx context.Context, node NodeInfo, params map[string]
 			sleepOrCancel(ctx, time.Duration(1<<uint(attempt-1))*time.Second)
 			continue
 		}
-		log.Printf("step vm-reset: API RESET accepted for VM %s, operation ID: %s", node.InstanceID, opID)
+		log.Printf("step vm-reset: Crusoe API RESET accepted for VM %s, operation ID: %s", node.InstanceID, opID)
 
 		// Phase 1: Poll operation completion
 		if opID != "" {

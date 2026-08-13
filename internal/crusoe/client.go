@@ -22,10 +22,10 @@ type vmUptimeInfo struct {
 
 // Client wraps the crusoecloud/client-go SDK for VM operations.
 type Client struct {
-	vmsAPI         *crusoe.VMsApiService
-	vmOpsAPI       *crusoe.VMOperationsApiService
-	identitiesAPI  *crusoe.IdentitiesApiService
-	projectID      string
+	vmsAPI        *crusoe.VMsApiService
+	vmOpsAPI      *crusoe.VMOperationsApiService
+	identitiesAPI *crusoe.IdentitiesApiService
+	projectID     string
 }
 
 // NewClient creates a new Crusoe API client using HMAC auth (access/secret key pair).

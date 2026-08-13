@@ -70,5 +70,5 @@ type mockPrioritizer struct {
 	name string
 }
 
-func (m *mockPrioritizer) Name() string                 { return m.name }
+func (m *mockPrioritizer) Name() string                { return m.name }
 func (m *mockPrioritizer) Sort(nodes []NodeWithUptime) {}

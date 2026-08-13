@@ -50,7 +50,7 @@ func (s *VMStartStep) Run(ctx context.Context, node NodeInfo, params map[string]
 		opID, err := s.crusoeClient.StartVM(ctx, node.InstanceID)
 		if err != nil {
 			lastErr = err
-			log.Printf("step vm-start: API call failed (attempt %d): %v", attempt, err)
+			log.Printf("step vm-start: Crusoe API call failed (attempt %d): %v", attempt, err)
 			sleepOrCancel(ctx, time.Duration(1<<uint(attempt-1))*time.Second)
 			continue
 		}

@@ -39,11 +39,16 @@ data:
       {{- end }}
     drainTimeout: "{{ .Values.drainTimeout }}"
     forceAfterEvictionFailure: {{ .Values.forceAfterEvictionFailure }}
+    useBuiltinSecret: {{ .Values.useBuiltinSecret }}
+    {{- if not .Values.useBuiltinSecret }}
     crusoeApiSecret: "{{ .Values.crusoeApiSecret }}"
+    {{- end }}
+    {{- if .Values.crusoeProjectId }}
     crusoeProjectId: "{{ .Values.crusoeProjectId }}"
+    {{- end }}
     dryRun: {{ .Values.dryRun }}
-    {{- if .Values.slackWebhookUrl }}
-    slackWebhookUrl: "{{ .Values.slackWebhookUrl }}"
+    {{- if .Values.nodePriority }}
+    nodePriority: "{{ .Values.nodePriority }}"
     {{- end }}
     nodeSelector:
       matchLabels:

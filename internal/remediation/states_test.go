@@ -9,11 +9,11 @@ import (
 
 func TestClassifyUptime(t *testing.T) {
 	tests := []struct {
-		name            string
-		uptime          time.Duration
-		cordonThreshold time.Duration
+		name                 string
+		uptime               time.Duration
+		cordonThreshold      time.Duration
 		remediationThreshold time.Duration
-		want            ActionTier
+		want                 ActionTier
 	}{
 		{"below cordon", 40 * 24 * time.Hour, 55 * 24 * time.Hour, 60 * 24 * time.Hour, ActionNone},
 		{"at cordon", 55 * 24 * time.Hour, 55 * 24 * time.Hour, 60 * 24 * time.Hour, ActionCordon},

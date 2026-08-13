@@ -6,7 +6,8 @@ RUN apk add --no-cache ca-certificates && \
     addgroup -g 65532 -S app && \
     adduser -u 65532 -S app -G app
 
-COPY --chmod=0755 crusoe-node-remediation /crusoe-node-remediation
+COPY crusoe-node-remediation /crusoe-node-remediation
+RUN chmod 0755 /crusoe-node-remediation
 
 USER 65532:65532
 

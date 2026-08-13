@@ -4,23 +4,50 @@ Automatically cordons, drains, and takes configurable remediation actions
 (vm-reset, vm-stop, vm-start, vm-delete) on B200 GPU nodes approaching the
 NVIDIA 60-day NVLink firmware bug threshold.
 
-## Installation
+## Quick Start
+
+### CMK Clusters (default)
+
+Uses the built-in `crusoe-secrets` from `crusoe-system` namespace — no manual secret creation needed.
 
 ```bash
-# Create secret with Crusoe API credentials first
-kubectl create secret generic crusoe-api-credentials \
-  --namespace crusoe-node-remediation \
-  --from-literal=api-key=<key> \
-  --from-literal=api-url=<url>
-
-# Install with dry-run mode first
+# Install with dry-run mode (observation only)
 helm install crusoe-node-remediation ./crusoe-node-remediation \
   --namespace crusoe-node-remediation \
   --create-namespace \
   --set nodeSelector.matchLabels.crusoe.ai/project.id=<your-project-id> \
-  --set crusoeProjectId=<your-project-id> \
   --set dryRun=true
 ```
+
+### Custom/Non-CMK Clusters
+
+Requires creating a custom secret with your Crusoe API credentials.
+
+```bash
+# 1. Create the secret
+kubectl create secret generic crusoe-api-credentials \
+  --namespace crusoe-node-remediation \
+  --from-literal=access-key=<your-access-key> \
+  --from-literal=secret-key=<your-secret-key> \
+  --from-literal=api-url=https://api.cloud.crusoe.ai/v1alpha5
+
+# 2. Install with custom secret mode
+helm install crusoe-node-remediation ./crusoe-node-remediation \
+  --namespace crusoe-node-remediation \
+  --create-namespace \
+  --set useBuiltinSecret=false \
+  --set crusoeProjectId=<your-project-id> \
+  --set nodeSelector.matchLabels.crusoe.ai/project.id=<your-project-id> \
+  --set dryRun=true
+```
+
+## Configuration
+
+See `values.yaml` for all options. Key credential settings:
+
+- **`useBuiltinSecret`** (default: `true`) — use `crusoe-secrets` from CMK cluster
+- **`crusoeProjectId`** (optional for built-in, required for custom) — Crusoe project UUID
+- **`crusoeApiSecret`** (default: `crusoe-api-credentials`) — K8s secret name for custom mode
 
 ## Action Types
 

@@ -14,17 +14,17 @@ const (
 
 // Annotation key constants.
 const (
-	AnnotationManagedBy          = "crusoe.ai/remediation.managed-by"
-	AnnotationCordonedAt         = "crusoe.ai/remediation.cordoned-at"
-	AnnotationCordonUptime       = "crusoe.ai/remediation.cordon-uptime"
-	AnnotationDrainStartedAt     = "crusoe.ai/remediation.drain-started-at"
+	AnnotationManagedBy           = "crusoe.ai/remediation.managed-by"
+	AnnotationCordonedAt          = "crusoe.ai/remediation.cordoned-at"
+	AnnotationCordonUptime        = "crusoe.ai/remediation.cordon-uptime"
+	AnnotationDrainStartedAt      = "crusoe.ai/remediation.drain-started-at"
 	AnnotationForceDrainStartedAt = "crusoe.ai/remediation.force-drain-started-at"
-	AnnotationActionTriggeredAt  = "crusoe.ai/remediation.action-triggered-at"
-	AnnotationActionType         = "crusoe.ai/remediation.action-type"
-	AnnotationActionCompletedAt  = "crusoe.ai/remediation.action-completed-at"
-	AnnotationUncordonedAt       = "crusoe.ai/remediation.uncordoned-at"
-	AnnotationAttempt            = "crusoe.ai/remediation.attempt"
-	AnnotationLastAction         = "crusoe.ai/remediation.last-action"
+	AnnotationActionTriggeredAt   = "crusoe.ai/remediation.action-triggered-at"
+	AnnotationActionType          = "crusoe.ai/remediation.action-type"
+	AnnotationActionCompletedAt   = "crusoe.ai/remediation.action-completed-at"
+	AnnotationUncordonedAt        = "crusoe.ai/remediation.uncordoned-at"
+	AnnotationAttempt             = "crusoe.ai/remediation.attempt"
+	AnnotationLastAction          = "crusoe.ai/remediation.last-action"
 
 	ManagedByValue = "crusoe-node-remediation"
 )

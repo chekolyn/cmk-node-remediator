@@ -1,9 +1,9 @@
 # ── Container Image ───────────────────────────────────────────────
 # Set repository to your Crusoe Container Registry URL.
-# Example: registry.us-southcentral1-a.ccr.crusoecloudcompute.com/crusoe-node-remediation.your-project-id
+# Example: registry.your-location.ccr.crusoecloudcompute.com/crusoe-node-remediation.your-project-id
 image:
   repository: ""
-  tag: v0.0.1
+  # tag: set in e2e/values.yaml or via --set
   pullPolicy: IfNotPresent
 
 # ── Schedule ──────────────────────────────────────────────────────
@@ -12,22 +12,27 @@ image:
 schedule: "0 0 * * *"
 
 # ── Node Discovery ────────────────────────────────────────────────
-# Select which nodes to manage. Match labels from your CMK cluster.
-# Leave empty to target all nodes, or set specific labels to filter.
+# Select which nodes to manage. Leave empty to target all nodes.
 #
-# Example — target nodes in a specific project:
-#   nodeSelector:
-#     matchLabels:
-#       crusoe.ai/project.id: "your-project-id"
+# nodeSelector filters by K8s labels (project, nodepool).
+# instanceTypeFilter filters by VM instance type (regex).
+# Both are ANDed together.
+#
+# Available labels on CMK nodes:
+#   crusoe.ai/project.id          — e.g. "your-project-id"
+#   crusoe.ai/nodepool.id         — e.g. "your-nodepool-id"
+#   beta.kubernetes.io/instance-type — e.g. "b200-180gb-sxm-ib.8x"
 #
 # Example — target a specific nodepool:
 #   nodeSelector:
 #     matchLabels:
 #       crusoe.ai/project.id: "your-project-id"
 #       crusoe.ai/nodepool.id: "your-nodepool-id"
+#   instanceTypeFilter: "b200.*"
 nodeSelector:
   matchLabels:
     # crusoe.ai/project.id: "your-project-id"
+    # crusoe.ai/nodepool.id: "your-nodepool-id"
 
 # Filter by VM instance type. Use regex.
 # B200 GPU nodes: "b200.*"
@@ -39,10 +44,28 @@ instanceTypeFilter: "b200.*"
 # When to cordon and when to take action. Supports: w (weeks),
 # d (days), h (hours), m (minutes), s (seconds). Mixed: "1d12h".
 #
-# For the B200 60-day NVLink bug:
-#   cordonThreshold: 55d   # cordon at 55 days uptime
-#   remediationThreshold: 60d   # remediate at 60 days uptime
-#   remediationCooldown: 7d           # skip nodes remediated in last 7 days
+# The B200 NVLink firmware bug triggers at ~60 days of VM uptime.
+# The thresholds create a two-phase window:
+#
+#   Day 0 ─────────────── Day 55 ─────────────── Day 60
+#   (normal)               (cordon)              (remediate)
+#                          │                     │
+#                          │  mark unschedulable  │  drain → vm-reset →
+#                          │  (pods keep running)  │  uncordon
+#
+# cordonThreshold: 55d
+#   Marks the node unschedulable — blocks new pods from scheduling.
+#   Does NOT drain — existing pods keep running.
+#   Gives a 5-day buffer for workloads to naturally rotate off.
+#
+# remediationThreshold: 60d
+#   Triggers the full remediation cycle on the already-cordoned node:
+#   drain (evict all pods) → vm-reset (reboot) → uncordon.
+#   Cordon is idempotent — skips if already done at Day 55.
+#
+# remediationCooldown: 7d
+#   After remediation, skip this node for 7 days to avoid
+#   re-remediating a freshly rebooted node.
 #
 # For fast testing:
 #   cordonThreshold: 30m
@@ -80,7 +103,7 @@ remediationCooldown: 7d
 action:
   type: vm-reset
   timeout: 30m
-  maxRetries: 3
+  maxRetries: 5
   # steps:
   #   - type: vm-stop
   #     timeout: 5m
@@ -93,43 +116,54 @@ action:
 # Use absolute count OR percentage (percentage of total nodes).
 # The more restrictive applies.
 guardrails:
-  globalMaxCordoned: 5
+  globalMaxCordoned: 1
   globalMaxCordonedPercent: null
   # globalMaxCordonedPercent: 20  # OR 20% of cluster
-  perPoolMaxCordoned: 2
+  perPoolMaxCordoned: 1
   perPoolMaxCordonedPercent: null
   # perPoolMaxCordonedPercent: 25  # OR 25% of pool
 
 # ── Drain Settings ───────────────────────────────────────────────
 # drainTimeout: how long to wait for graceful drain (evict pods, respect PDBs).
-# forceAfterEvictionFailure: if true, force-drain (ignore PDBs) after drainTimeout.
 drainTimeout: 10m
-forceAfterEvictionFailure: true
+# forceAfterEvictionFailure: if true, force-drain (ignore PDBs) after drainTimeout.
+forceAfterEvictionFailure: false
 
 # ── Node Priority ─────────────────────────────────────────────
 # When guardrails limit how many nodes can be processed, which nodes go first?
 #   highest-uptime — process nodes with most uptime first (default)
-#   lowest-uptime  — process nodes with least uptime first
-#   none            — process in discovery order
+nodePriority: highest-uptime
 
 # ── Crusoe API ───────────────────────────────────────────────────
-# Create a K8s secret with your Crusoe API credentials BEFORE installing.
-# The SDK uses HMAC auth with an access/secret key pair (same as the Crusoe CLI):
-#   kubectl create secret generic crusoe-api-credentials \
-#     --namespace crusoe-node-remediation \
-#     --from-literal=access-key=YOUR_ACCESS_KEY \
-#     --from-literal=secret-key=YOUR_SECRET_KEY \
-#     --from-literal=api-url=https://api.cloud.crusoe.ai/v1alpha5
-crusoeApiSecret: crusoe-api-credentials
+# Credential source — two modes:
+#
+# 1. Built-in secret (default, recommended for CMK clusters):
+#    Set useBuiltinSecret: true. Uses the crusoe-secrets secret provisioned
+#    by Crusoe in the crusoe-system namespace. No manual secret creation needed.
+#    Keys: CRUSOE_ACCESS_KEY, CRUSOE_SECRET_KEY, CRUSOE_API_ENDPOINT,
+#          CRUSOE_PROJECT_ID, CRUSOE_CLUSTER_ID
+#
+# 2. Custom secret (for non-CMK or custom setups):
+#    Set useBuiltinSecret: false. Create a secret with keys:
+#      access-key, secret-key, api-url
+#    kubectl create secret generic crusoe-api-credentials \
+#      --namespace crusoe-node-remediation \
+#      --from-literal=access-key=YOUR_ACCESS_KEY \
+#      --from-literal=secret-key=YOUR_SECRET_KEY \
+#      --from-literal=api-url=https://api.cloud.crusoe.ai/v1alpha5
+useBuiltinSecret: true
+builtinSecretNamespace: crusoe-system
+# crusoeApiSecret: crusoe-api-credentials  # Only set when useBuiltinSecret: false
+
+# Crusoe project ID. Required when useBuiltinSecret: false.
+# When useBuiltinSecret: true, CRUSOE_PROJECT_ID from the secret is used
+# and this value is only a fallback if the secret doesn't have it.
 crusoeProjectId: ""
 
 # ── Dry Run ──────────────────────────────────────────────────────
 # When true: logs all actions without executing cordon/drain/reboot.
 # Start with true to verify node discovery, then set to false.
-dryRun: false
-
-# ── Notifications (Phase 2) ──────────────────────────────────────
-slackWebhookUrl: ""
+dryRun: true
 
 # ── CronJob Settings ─────────────────────────────────────────────
 activeDeadlineSeconds: 7200

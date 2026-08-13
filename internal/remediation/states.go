@@ -10,7 +10,7 @@ type ActionTier int
 const (
 	ActionNone      ActionTier = iota // < cordonThreshold
 	ActionCordon                      // cordonThreshold <= uptime < remediationThreshold
-	ActionRemediate                    // >= remediationThreshold
+	ActionRemediate                   // >= remediationThreshold
 )
 
 // ClassifyUptime determines the action tier for a node based on its uptime.

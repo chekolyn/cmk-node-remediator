@@ -51,8 +51,14 @@ guardrails:
 drainTimeout: 2m
 forceAfterEvictionFailure: true
 
+# Use built-in crusoe-secrets from crusoe-system (default, recommended for CMK)
+useBuiltinSecret: true
+builtinSecretNamespace: crusoe-system
+# Custom secret name (only used when useBuiltinSecret: false)
 crusoeApiSecret: crusoe-api-credentials
-crusoeProjectId: ""  # Set: your-project-id
+# Project ID (required when useBuiltinSecret: false; optional when true —
+# falls back to CRUSOE_PROJECT_ID from the built-in secret)
+#crusoeProjectId: ""  # Set: your-project-id
 
 # Start with dry-run — no changes to nodes
 # Set to false when ready for real actions (see vm-reset above)

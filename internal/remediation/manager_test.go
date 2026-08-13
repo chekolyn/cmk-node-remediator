@@ -42,9 +42,9 @@ func TestRunDryRunNoChanges(t *testing.T) {
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
 		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
-		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
+		RemediationThreshold: config.Duration(60 * 24 * time.Hour),
 		DryRun:               true,
-		InstanceTypeFilter: "b200.*",
+		InstanceTypeFilter:   "b200.*",
 		Action:               config.ActionConfig{Type: "noop", Timeout: 30 * time.Minute, MaxRetries: 3},
 		Guardrails:           config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
 		DrainTimeout:         10 * time.Minute,
@@ -98,9 +98,9 @@ func TestRunCordonsNodeAt55Days(t *testing.T) {
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
 		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
-		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
+		RemediationThreshold: config.Duration(60 * 24 * time.Hour),
 		DryRun:               false,
-		InstanceTypeFilter: "b200.*",
+		InstanceTypeFilter:   "b200.*",
 		Action:               config.ActionConfig{Type: "noop", Timeout: 30 * time.Minute, MaxRetries: 3},
 		Guardrails:           config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
 		DrainTimeout:         10 * time.Minute,
@@ -159,10 +159,10 @@ func TestGuardrailExceededSkipsCordon(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "node-active",
 				Labels: map[string]string{
-					constants.LabelNodepoolID:   "pool-a",
-					constants.LabelInstanceID:   "vm-active",
-					constants.LabelProjectID:    "proj-1",
-					constants.LabelInstanceType: "b200-180gb-sxm-ib.8x",
+					constants.LabelNodepoolID:       "pool-a",
+					constants.LabelInstanceID:       "vm-active",
+					constants.LabelProjectID:        "proj-1",
+					constants.LabelInstanceType:     "b200-180gb-sxm-ib.8x",
 					constants.LabelRemediationPhase: string(constants.PhaseCordoned),
 				},
 			},
@@ -186,9 +186,9 @@ func TestGuardrailExceededSkipsCordon(t *testing.T) {
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
 		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
-		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
+		RemediationThreshold: config.Duration(60 * 24 * time.Hour),
 		DryRun:               false,
-		InstanceTypeFilter: "b200.*",
+		InstanceTypeFilter:   "b200.*",
 		Action:               config.ActionConfig{Type: "noop", Timeout: 30 * time.Minute, MaxRetries: 3},
 		Guardrails:           config.GuardrailsConfig{GlobalMaxCordoned: 1, PerPoolMaxCordoned: 1},
 		DrainTimeout:         10 * time.Minute,
@@ -228,12 +228,12 @@ func TestGuardrailExceededSkipsCordon(t *testing.T) {
 
 // mockDrainMgr implements DrainManager for testing drain failure paths.
 type mockDrainMgr struct {
-	drainFails      bool
-	forceAfterEvictionFailureFails bool
-	drainCalled     bool
+	drainFails                      bool
+	forceAfterEvictionFailureFails  bool
+	drainCalled                     bool
 	forceAfterEvictionFailureCalled bool
-	drainCount      int
-	forceAfterEvictionFailureCount int
+	drainCount                      int
+	forceAfterEvictionFailureCount  int
 }
 
 func (m *mockDrainMgr) Drain(ctx context.Context, nodeName string) error {
@@ -286,17 +286,17 @@ func TestForceDrainPath(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
+		CordonThreshold:           config.Duration(55 * 24 * time.Hour),
 		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
-		DryRun:                 false,
-		InstanceTypeFilter:   "b200.*",
-		Action:                 config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
-		Guardrails:             config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
-		DrainTimeout:           1 * time.Second,
+		DryRun:                    false,
+		InstanceTypeFilter:        "b200.*",
+		Action:                    config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:                config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+		DrainTimeout:              1 * time.Second,
 		ForceAfterEvictionFailure: true,
-		CrusoeAPISecret:        "test-secret",
-		CrusoeProjectID:        "proj-1",
-		NodeSelector:           config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
 	drainMgr := &mockDrainMgr{drainFails: true, forceAfterEvictionFailureFails: false}
@@ -352,17 +352,17 @@ func TestForceDrainDisabledLeavesNodeCordoned(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
+		CordonThreshold:           config.Duration(55 * 24 * time.Hour),
 		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
-		DryRun:                 false,
-		InstanceTypeFilter:   "b200.*",
-		Action:                 config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
-		Guardrails:             config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
-		DrainTimeout:           1 * time.Second,
-		ForceAfterEvictionFailure:             false, // force drain disabled
-		CrusoeAPISecret:        "test-secret",
-		CrusoeProjectID:        "proj-1",
-		NodeSelector:           config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		DryRun:                    false,
+		InstanceTypeFilter:        "b200.*",
+		Action:                    config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:                config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+		DrainTimeout:              1 * time.Second,
+		ForceAfterEvictionFailure: false, // force drain disabled
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
 	drainMgr := &mockDrainMgr{drainFails: true, forceAfterEvictionFailureFails: false}
@@ -422,17 +422,17 @@ func TestAttemptAnnotationResetAfterSuccess(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
+		CordonThreshold:           config.Duration(55 * 24 * time.Hour),
 		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
-		DryRun:                 false,
-		InstanceTypeFilter:   "b200.*",
-		Action:                 config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
-		Guardrails:             config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
-		DrainTimeout:           1 * time.Second,
+		DryRun:                    false,
+		InstanceTypeFilter:        "b200.*",
+		Action:                    config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:                config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+		DrainTimeout:              1 * time.Second,
 		ForceAfterEvictionFailure: true,
-		CrusoeAPISecret:        "test-secret",
-		CrusoeProjectID:        "proj-1",
-		NodeSelector:           config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
 	drainMgr := &mockDrainMgr{}
@@ -487,17 +487,17 @@ func TestUncordonFailureDoesNotSetCompletedAt(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
+		CordonThreshold:           config.Duration(55 * 24 * time.Hour),
 		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
-		DryRun:                 false,
-		InstanceTypeFilter:   "b200.*",
-		Action:                 config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
-		Guardrails:             config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
-		DrainTimeout:           1 * time.Second,
+		DryRun:                    false,
+		InstanceTypeFilter:        "b200.*",
+		Action:                    config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:                config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+		DrainTimeout:              1 * time.Second,
 		ForceAfterEvictionFailure: true,
-		CrusoeAPISecret:        "test-secret",
-		CrusoeProjectID:        "proj-1",
-		NodeSelector:           config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
 	// Step that always fails
@@ -569,18 +569,18 @@ func TestRemediationCooldownBoundaryNotSkipped(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
+		CordonThreshold:           config.Duration(55 * 24 * time.Hour),
 		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
-		RemediationCooldown:             config.Duration(7 * 24 * time.Hour),
-		DryRun:                 false,
-		InstanceTypeFilter:   "b200.*",
-		Action:                 config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
-		Guardrails:             config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
-		DrainTimeout:           1 * time.Second,
+		RemediationCooldown:       config.Duration(7 * 24 * time.Hour),
+		DryRun:                    false,
+		InstanceTypeFilter:        "b200.*",
+		Action:                    config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:                config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+		DrainTimeout:              1 * time.Second,
 		ForceAfterEvictionFailure: true,
-		CrusoeAPISecret:        "test-secret",
-		CrusoeProjectID:        "proj-1",
-		NodeSelector:           config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
 	drainMgr := &mockDrainMgr{}
@@ -638,17 +638,17 @@ func TestMaxRetriesExceededLeavesCordoned(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
+		CordonThreshold:           config.Duration(55 * 24 * time.Hour),
 		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
-		DryRun:                 false,
-		InstanceTypeFilter:   "b200.*",
-		Action:                 config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
-		Guardrails:             config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
-		DrainTimeout:           1 * time.Second,
+		DryRun:                    false,
+		InstanceTypeFilter:        "b200.*",
+		Action:                    config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:                config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+		DrainTimeout:              1 * time.Second,
 		ForceAfterEvictionFailure: true,
-		CrusoeAPISecret:        "test-secret",
-		CrusoeProjectID:        "proj-1",
-		NodeSelector:           config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
 	drainMgr := &mockDrainMgr{}
@@ -702,17 +702,17 @@ func TestVMDeleteDoesNotUncordon(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
+		CordonThreshold:           config.Duration(55 * 24 * time.Hour),
 		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
-		DryRun:                 false,
-		InstanceTypeFilter:   "b200.*",
-		Action:                 config.ActionConfig{Type: "vm-delete", Timeout: 5 * time.Second, MaxRetries: 3},
-		Guardrails:             config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
-		DrainTimeout:           1 * time.Second,
+		DryRun:                    false,
+		InstanceTypeFilter:        "b200.*",
+		Action:                    config.ActionConfig{Type: "vm-delete", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:                config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+		DrainTimeout:              1 * time.Second,
 		ForceAfterEvictionFailure: true,
-		CrusoeAPISecret:        "test-secret",
-		CrusoeProjectID:        "proj-1",
-		NodeSelector:           config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
 	drainMgr := &mockDrainMgr{}
@@ -757,8 +757,8 @@ func TestNodeWithNoInstanceIDLabelSkipped(t *testing.T) {
 				Name: "node-no-id",
 				Labels: map[string]string{
 					constants.LabelNodepoolID:   "pool-a",
-					constants.LabelProjectID:     "proj-1",
-					constants.LabelInstanceType:  "b200-180gb-sxm-ib.8x",
+					constants.LabelProjectID:    "proj-1",
+					constants.LabelInstanceType: "b200-180gb-sxm-ib.8x",
 					// Missing: constants.LabelInstanceID
 				},
 			},
@@ -771,8 +771,8 @@ func TestNodeWithNoInstanceIDLabelSkipped(t *testing.T) {
 				Labels: map[string]string{
 					constants.LabelNodepoolID:   "pool-a",
 					constants.LabelInstanceID:   "vm-normal",
-					constants.LabelProjectID:     "proj-1",
-					constants.LabelInstanceType:  "b200-180gb-sxm-ib.8x",
+					constants.LabelProjectID:    "proj-1",
+					constants.LabelInstanceType: "b200-180gb-sxm-ib.8x",
 				},
 			},
 			Spec: corev1.NodeSpec{Unschedulable: false},
@@ -781,17 +781,17 @@ func TestNodeWithNoInstanceIDLabelSkipped(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
+		CordonThreshold:           config.Duration(55 * 24 * time.Hour),
 		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
-		DryRun:                 false,
-		InstanceTypeFilter:   "b200.*",
-		Action:                 config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
-		Guardrails:             config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
-		DrainTimeout:           1 * time.Second,
+		DryRun:                    false,
+		InstanceTypeFilter:        "b200.*",
+		Action:                    config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:                config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+		DrainTimeout:              1 * time.Second,
 		ForceAfterEvictionFailure: true,
-		CrusoeAPISecret:        "test-secret",
-		CrusoeProjectID:        "proj-1",
-		NodeSelector:           config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
 	drainMgr := &mockDrainMgr{}
@@ -837,8 +837,8 @@ func TestGetNodeStartTimeFailsSkipsNode(t *testing.T) {
 				Labels: map[string]string{
 					constants.LabelNodepoolID:   "pool-a",
 					constants.LabelInstanceID:   "vm-fail",
-					constants.LabelProjectID:     "proj-1",
-					constants.LabelInstanceType:  "b200-180gb-sxm-ib.8x",
+					constants.LabelProjectID:    "proj-1",
+					constants.LabelInstanceType: "b200-180gb-sxm-ib.8x",
 				},
 			},
 			Spec: corev1.NodeSpec{Unschedulable: false},
@@ -849,8 +849,8 @@ func TestGetNodeStartTimeFailsSkipsNode(t *testing.T) {
 				Labels: map[string]string{
 					constants.LabelNodepoolID:   "pool-a",
 					constants.LabelInstanceID:   "vm-ok",
-					constants.LabelProjectID:     "proj-1",
-					constants.LabelInstanceType:  "b200-180gb-sxm-ib.8x",
+					constants.LabelProjectID:    "proj-1",
+					constants.LabelInstanceType: "b200-180gb-sxm-ib.8x",
 				},
 			},
 			Spec: corev1.NodeSpec{Unschedulable: false},
@@ -859,17 +859,17 @@ func TestGetNodeStartTimeFailsSkipsNode(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
+		CordonThreshold:           config.Duration(55 * 24 * time.Hour),
 		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
-		DryRun:                 false,
-		InstanceTypeFilter:   "b200.*",
-		Action:                 config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
-		Guardrails:             config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
-		DrainTimeout:           1 * time.Second,
+		DryRun:                    false,
+		InstanceTypeFilter:        "b200.*",
+		Action:                    config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:                config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+		DrainTimeout:              1 * time.Second,
 		ForceAfterEvictionFailure: true,
-		CrusoeAPISecret:        "test-secret",
-		CrusoeProjectID:        "proj-1",
-		NodeSelector:           config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
 	drainMgr := &mockDrainMgr{}
@@ -931,10 +931,10 @@ func TestHandleMonitoredNodeOnlyUncordonsManagedNodes(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "node-managed",
 				Labels: map[string]string{
-					constants.LabelNodepoolID:        "pool-a",
-					constants.LabelInstanceID:        "vm-managed",
-					constants.LabelProjectID:         "proj-1",
-					constants.LabelInstanceType:      "b200-180gb-sxm-ib.8x",
+					constants.LabelNodepoolID:         "pool-a",
+					constants.LabelInstanceID:         "vm-managed",
+					constants.LabelProjectID:          "proj-1",
+					constants.LabelInstanceType:       "b200-180gb-sxm-ib.8x",
 					constants.LabelRemediationManaged: "true",
 				},
 			},
@@ -947,8 +947,8 @@ func TestHandleMonitoredNodeOnlyUncordonsManagedNodes(t *testing.T) {
 				Labels: map[string]string{
 					constants.LabelNodepoolID:   "pool-a",
 					constants.LabelInstanceID:   "vm-external",
-					constants.LabelProjectID:     "proj-1",
-					constants.LabelInstanceType:  "b200-180gb-sxm-ib.8x",
+					constants.LabelProjectID:    "proj-1",
+					constants.LabelInstanceType: "b200-180gb-sxm-ib.8x",
 					// NO constants.LabelRemediationManaged
 				},
 			},
@@ -958,17 +958,17 @@ func TestHandleMonitoredNodeOnlyUncordonsManagedNodes(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
+		CordonThreshold:           config.Duration(55 * 24 * time.Hour),
 		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
-		DryRun:                 false,
-		InstanceTypeFilter:   "b200.*",
-		Action:                 config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
-		Guardrails:             config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
-		DrainTimeout:           1 * time.Second,
+		DryRun:                    false,
+		InstanceTypeFilter:        "b200.*",
+		Action:                    config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:                config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+		DrainTimeout:              1 * time.Second,
 		ForceAfterEvictionFailure: true,
-		CrusoeAPISecret:        "test-secret",
-		CrusoeProjectID:        "proj-1",
-		NodeSelector:           config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
 	drainMgr := &mockDrainMgr{}
@@ -1017,8 +1017,8 @@ func TestMultiplePoolsPerPoolGuardrailIndependent(t *testing.T) {
 				Labels: map[string]string{
 					constants.LabelNodepoolID:   "pool-a",
 					constants.LabelInstanceID:   "vm-a1",
-					constants.LabelProjectID:     "proj-1",
-					constants.LabelInstanceType:  "b200-180gb-sxm-ib.8x",
+					constants.LabelProjectID:    "proj-1",
+					constants.LabelInstanceType: "b200-180gb-sxm-ib.8x",
 				},
 			},
 			Spec: corev1.NodeSpec{Unschedulable: false},
@@ -1029,8 +1029,8 @@ func TestMultiplePoolsPerPoolGuardrailIndependent(t *testing.T) {
 				Labels: map[string]string{
 					constants.LabelNodepoolID:   "pool-a",
 					constants.LabelInstanceID:   "vm-a2",
-					constants.LabelProjectID:     "proj-1",
-					constants.LabelInstanceType:  "b200-180gb-sxm-ib.8x",
+					constants.LabelProjectID:    "proj-1",
+					constants.LabelInstanceType: "b200-180gb-sxm-ib.8x",
 				},
 			},
 			Spec: corev1.NodeSpec{Unschedulable: false},
@@ -1042,8 +1042,8 @@ func TestMultiplePoolsPerPoolGuardrailIndependent(t *testing.T) {
 				Labels: map[string]string{
 					constants.LabelNodepoolID:   "pool-b",
 					constants.LabelInstanceID:   "vm-b1",
-					constants.LabelProjectID:     "proj-1",
-					constants.LabelInstanceType:  "b200-180gb-sxm-ib.8x",
+					constants.LabelProjectID:    "proj-1",
+					constants.LabelInstanceType: "b200-180gb-sxm-ib.8x",
 				},
 			},
 			Spec: corev1.NodeSpec{Unschedulable: false},
@@ -1054,8 +1054,8 @@ func TestMultiplePoolsPerPoolGuardrailIndependent(t *testing.T) {
 				Labels: map[string]string{
 					constants.LabelNodepoolID:   "pool-b",
 					constants.LabelInstanceID:   "vm-b2",
-					constants.LabelProjectID:     "proj-1",
-					constants.LabelInstanceType:  "b200-180gb-sxm-ib.8x",
+					constants.LabelProjectID:    "proj-1",
+					constants.LabelInstanceType: "b200-180gb-sxm-ib.8x",
 				},
 			},
 			Spec: corev1.NodeSpec{Unschedulable: false},
@@ -1064,17 +1064,17 @@ func TestMultiplePoolsPerPoolGuardrailIndependent(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
+		CordonThreshold:           config.Duration(55 * 24 * time.Hour),
 		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
-		DryRun:                 false,
-		InstanceTypeFilter:   "b200.*",
-		Action:                 config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
-		Guardrails:             config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 1},
-		DrainTimeout:           1 * time.Second,
+		DryRun:                    false,
+		InstanceTypeFilter:        "b200.*",
+		Action:                    config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:                config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 1},
+		DrainTimeout:              1 * time.Second,
 		ForceAfterEvictionFailure: true,
-		CrusoeAPISecret:        "test-secret",
-		CrusoeProjectID:        "proj-1",
-		NodeSelector:           config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
 	drainMgr := &mockDrainMgr{}
@@ -1180,27 +1180,27 @@ func TestHighestUptimePriorityCordonsHighestFirst(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		CordonThreshold:      config.Duration(30 * time.Minute),
+		CordonThreshold:           config.Duration(30 * time.Minute),
 		RemediationThreshold:      config.Duration(1 * time.Hour),
-		RemediationCooldown:             config.Duration(15 * time.Minute),
-		DryRun:               false,
-		InstanceTypeFilter: "b200.*",
-		Action:               config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
-		Guardrails:           config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 1},
-		DrainTimeout:         1 * time.Second,
+		RemediationCooldown:       config.Duration(15 * time.Minute),
+		DryRun:                    false,
+		InstanceTypeFilter:        "b200.*",
+		Action:                    config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:                config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 1},
+		DrainTimeout:              1 * time.Second,
 		ForceAfterEvictionFailure: true,
-		CrusoeAPISecret:      "test-secret",
-		CrusoeProjectID:      "proj-1",
-		NodeSelector:         config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
 	drainMgr := &mockDrainMgr{}
 	stepFactory := &mockStepCreator{step: &actions.NoopStep{}}
 
 	deps := Dependencies{
-		K8sClient:    k8sClient,
-		DrainMgr:     drainMgr,
-		StepFactory:  stepFactory,
+		K8sClient:   k8sClient,
+		DrainMgr:    drainMgr,
+		StepFactory: stepFactory,
 		UptimeEval: &mockUptimeEvaluatorMulti{
 			startTimes: map[string]time.Time{
 				"node-low":  now.Add(-30 * time.Minute),
@@ -1256,8 +1256,8 @@ func TestHighestUptimePriorityMultiplePools(t *testing.T) {
 				Labels: map[string]string{
 					constants.LabelNodepoolID:   "pool-a",
 					constants.LabelInstanceID:   "vm-a-high",
-					constants.LabelProjectID:     "proj-1",
-					constants.LabelInstanceType:  "b200-180gb-sxm-ib.8x",
+					constants.LabelProjectID:    "proj-1",
+					constants.LabelInstanceType: "b200-180gb-sxm-ib.8x",
 				},
 			},
 			Spec: corev1.NodeSpec{Unschedulable: false},
@@ -1268,8 +1268,8 @@ func TestHighestUptimePriorityMultiplePools(t *testing.T) {
 				Labels: map[string]string{
 					constants.LabelNodepoolID:   "pool-a",
 					constants.LabelInstanceID:   "vm-a-low",
-					constants.LabelProjectID:     "proj-1",
-					constants.LabelInstanceType:  "b200-180gb-sxm-ib.8x",
+					constants.LabelProjectID:    "proj-1",
+					constants.LabelInstanceType: "b200-180gb-sxm-ib.8x",
 				},
 			},
 			Spec: corev1.NodeSpec{Unschedulable: false},
@@ -1281,8 +1281,8 @@ func TestHighestUptimePriorityMultiplePools(t *testing.T) {
 				Labels: map[string]string{
 					constants.LabelNodepoolID:   "pool-b",
 					constants.LabelInstanceID:   "vm-b-high",
-					constants.LabelProjectID:     "proj-1",
-					constants.LabelInstanceType:  "b200-180gb-sxm-ib.8x",
+					constants.LabelProjectID:    "proj-1",
+					constants.LabelInstanceType: "b200-180gb-sxm-ib.8x",
 				},
 			},
 			Spec: corev1.NodeSpec{Unschedulable: false},
@@ -1293,8 +1293,8 @@ func TestHighestUptimePriorityMultiplePools(t *testing.T) {
 				Labels: map[string]string{
 					constants.LabelNodepoolID:   "pool-b",
 					constants.LabelInstanceID:   "vm-b-low",
-					constants.LabelProjectID:     "proj-1",
-					constants.LabelInstanceType:  "b200-180gb-sxm-ib.8x",
+					constants.LabelProjectID:    "proj-1",
+					constants.LabelInstanceType: "b200-180gb-sxm-ib.8x",
 				},
 			},
 			Spec: corev1.NodeSpec{Unschedulable: false},
@@ -1303,27 +1303,27 @@ func TestHighestUptimePriorityMultiplePools(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		CordonThreshold:      config.Duration(30 * time.Minute),
+		CordonThreshold:           config.Duration(30 * time.Minute),
 		RemediationThreshold:      config.Duration(1 * time.Hour),
-		RemediationCooldown:             config.Duration(15 * time.Minute),
-		DryRun:               false,
-		InstanceTypeFilter: "b200.*",
-		Action:               config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
-		Guardrails:           config.GuardrailsConfig{GlobalMaxCordoned: 2, PerPoolMaxCordoned: 1},
-		DrainTimeout:         1 * time.Second,
+		RemediationCooldown:       config.Duration(15 * time.Minute),
+		DryRun:                    false,
+		InstanceTypeFilter:        "b200.*",
+		Action:                    config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:                config.GuardrailsConfig{GlobalMaxCordoned: 2, PerPoolMaxCordoned: 1},
+		DrainTimeout:              1 * time.Second,
 		ForceAfterEvictionFailure: true,
-		CrusoeAPISecret:      "test-secret",
-		CrusoeProjectID:      "proj-1",
-		NodeSelector:         config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
 	drainMgr := &mockDrainMgr{}
 	stepFactory := &mockStepCreator{step: &actions.NoopStep{}}
 
 	deps := Dependencies{
-		K8sClient:    k8sClient,
-		DrainMgr:     drainMgr,
-		StepFactory:  stepFactory,
+		K8sClient:   k8sClient,
+		DrainMgr:    drainMgr,
+		StepFactory: stepFactory,
 		UptimeEval: &mockUptimeEvaluatorMulti{
 			startTimes: map[string]time.Time{
 				"node-a-high": now.Add(-2 * time.Hour),
@@ -1383,8 +1383,8 @@ func TestHighestUptimePriorityGlobalGuardrailAcrossPools(t *testing.T) {
 				Labels: map[string]string{
 					constants.LabelNodepoolID:   "pool-a",
 					constants.LabelInstanceID:   "vm-a",
-					constants.LabelProjectID:     "proj-1",
-					constants.LabelInstanceType:  "b200-180gb-sxm-ib.8x",
+					constants.LabelProjectID:    "proj-1",
+					constants.LabelInstanceType: "b200-180gb-sxm-ib.8x",
 				},
 			},
 			Spec: corev1.NodeSpec{Unschedulable: false},
@@ -1396,8 +1396,8 @@ func TestHighestUptimePriorityGlobalGuardrailAcrossPools(t *testing.T) {
 				Labels: map[string]string{
 					constants.LabelNodepoolID:   "pool-b",
 					constants.LabelInstanceID:   "vm-b",
-					constants.LabelProjectID:     "proj-1",
-					constants.LabelInstanceType:  "b200-180gb-sxm-ib.8x",
+					constants.LabelProjectID:    "proj-1",
+					constants.LabelInstanceType: "b200-180gb-sxm-ib.8x",
 				},
 			},
 			Spec: corev1.NodeSpec{Unschedulable: false},
@@ -1406,27 +1406,27 @@ func TestHighestUptimePriorityGlobalGuardrailAcrossPools(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		CordonThreshold:      config.Duration(30 * time.Minute),
+		CordonThreshold:           config.Duration(30 * time.Minute),
 		RemediationThreshold:      config.Duration(1 * time.Hour),
-		RemediationCooldown:             config.Duration(15 * time.Minute),
-		DryRun:               false,
-		InstanceTypeFilter: "b200.*",
-		Action:               config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
-		Guardrails:           config.GuardrailsConfig{GlobalMaxCordoned: 1, PerPoolMaxCordoned: 1},
-		DrainTimeout:         1 * time.Second,
+		RemediationCooldown:       config.Duration(15 * time.Minute),
+		DryRun:                    false,
+		InstanceTypeFilter:        "b200.*",
+		Action:                    config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:                config.GuardrailsConfig{GlobalMaxCordoned: 1, PerPoolMaxCordoned: 1},
+		DrainTimeout:              1 * time.Second,
 		ForceAfterEvictionFailure: true,
-		CrusoeAPISecret:      "test-secret",
-		CrusoeProjectID:      "proj-1",
-		NodeSelector:         config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
 	drainMgr := &mockDrainMgr{}
 	stepFactory := &mockStepCreator{step: &actions.NoopStep{}}
 
 	deps := Dependencies{
-		K8sClient:    k8sClient,
-		DrainMgr:     drainMgr,
-		StepFactory:  stepFactory,
+		K8sClient:   k8sClient,
+		DrainMgr:    drainMgr,
+		StepFactory: stepFactory,
 		UptimeEval: &mockUptimeEvaluatorMulti{
 			startTimes: map[string]time.Time{
 				"node-a": now.Add(-2 * time.Hour),
@@ -1492,17 +1492,17 @@ func TestMaxRetriesErrorIncludesRetryCount(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
+		CordonThreshold:           config.Duration(55 * 24 * time.Hour),
 		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
-		DryRun:               false,
-		InstanceTypeFilter: "b200.*",
-		Action:               config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 2},
-		Guardrails:           config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
-		DrainTimeout:         1 * time.Second,
-		ForceAfterEvictionFailure:           true,
-		CrusoeAPISecret:      "test-secret",
-		CrusoeProjectID:      "proj-1",
-		NodeSelector:         config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		DryRun:                    false,
+		InstanceTypeFilter:        "b200.*",
+		Action:                    config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 2},
+		Guardrails:                config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+		DrainTimeout:              1 * time.Second,
+		ForceAfterEvictionFailure: true,
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
 	deps := Dependencies{
@@ -1549,17 +1549,17 @@ func TestForceDrainDisabledErrorMentionsForceDrain(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
+		CordonThreshold:           config.Duration(55 * 24 * time.Hour),
 		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
-		DryRun:               false,
-		InstanceTypeFilter: "b200.*",
-		Action:               config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
-		Guardrails:           config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
-		DrainTimeout:         1 * time.Second,
-		ForceAfterEvictionFailure:           false,
-		CrusoeAPISecret:      "test-secret",
-		CrusoeProjectID:      "proj-1",
-		NodeSelector:         config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		DryRun:                    false,
+		InstanceTypeFilter:        "b200.*",
+		Action:                    config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:                config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+		DrainTimeout:              1 * time.Second,
+		ForceAfterEvictionFailure: false,
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
 	deps := Dependencies{
@@ -1606,17 +1606,17 @@ func TestForceDrainFailedErrorMentionsForceDrain(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
+		CordonThreshold:           config.Duration(55 * 24 * time.Hour),
 		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
-		DryRun:               false,
-		InstanceTypeFilter: "b200.*",
-		Action:               config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
-		Guardrails:           config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
-		DrainTimeout:         1 * time.Second,
-		ForceAfterEvictionFailure:           true,
-		CrusoeAPISecret:      "test-secret",
-		CrusoeProjectID:      "proj-1",
-		NodeSelector:         config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		DryRun:                    false,
+		InstanceTypeFilter:        "b200.*",
+		Action:                    config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:                config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+		DrainTimeout:              1 * time.Second,
+		ForceAfterEvictionFailure: true,
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
 	deps := Dependencies{
@@ -1666,17 +1666,17 @@ func TestEventsEmittedForMaxRetries(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
+		CordonThreshold:           config.Duration(55 * 24 * time.Hour),
 		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
-		DryRun:               false,
-		InstanceTypeFilter: "b200.*",
-		Action:               config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 2},
-		Guardrails:           config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
-		DrainTimeout:         1 * time.Second,
-		ForceAfterEvictionFailure:           true,
-		CrusoeAPISecret:      "test-secret",
-		CrusoeProjectID:      "proj-1",
-		NodeSelector:         config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		DryRun:                    false,
+		InstanceTypeFilter:        "b200.*",
+		Action:                    config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 2},
+		Guardrails:                config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+		DrainTimeout:              1 * time.Second,
+		ForceAfterEvictionFailure: true,
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
 	recorder := record.NewFakeRecorder(20)
@@ -1734,17 +1734,17 @@ func TestEventsEmittedForForceDrainFailure(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
+		CordonThreshold:           config.Duration(55 * 24 * time.Hour),
 		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
-		DryRun:               false,
-		InstanceTypeFilter: "b200.*",
-		Action:               config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
-		Guardrails:           config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
-		DrainTimeout:         1 * time.Second,
-		ForceAfterEvictionFailure:           true,
-		CrusoeAPISecret:      "test-secret",
-		CrusoeProjectID:      "proj-1",
-		NodeSelector:         config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		DryRun:                    false,
+		InstanceTypeFilter:        "b200.*",
+		Action:                    config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:                config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+		DrainTimeout:              1 * time.Second,
+		ForceAfterEvictionFailure: true,
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
 	recorder := record.NewFakeRecorder(20)
@@ -1789,10 +1789,10 @@ func TestGuardrailPreventsCordoningMoreThanMaxAcrossRuns(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "node-1",
 				Labels: map[string]string{
-					constants.LabelNodepoolID:       "pool-a",
-					constants.LabelInstanceID:       "vm-001",
-					constants.LabelProjectID:        "proj-1",
-					constants.LabelInstanceType:     "b200-180gb-sxm-ib.8x",
+					constants.LabelNodepoolID:         "pool-a",
+					constants.LabelInstanceID:         "vm-001",
+					constants.LabelProjectID:          "proj-1",
+					constants.LabelInstanceType:       "b200-180gb-sxm-ib.8x",
 					constants.LabelRemediationManaged: "true",
 					constants.LabelRemediationPhase:   string(constants.PhaseDraining),
 				},
@@ -1803,10 +1803,10 @@ func TestGuardrailPreventsCordoningMoreThanMaxAcrossRuns(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "node-2",
 				Labels: map[string]string{
-					constants.LabelNodepoolID:       "pool-a",
-					constants.LabelInstanceID:       "vm-002",
-					constants.LabelProjectID:        "proj-1",
-					constants.LabelInstanceType:     "b200-180gb-sxm-ib.8x",
+					constants.LabelNodepoolID:         "pool-a",
+					constants.LabelInstanceID:         "vm-002",
+					constants.LabelProjectID:          "proj-1",
+					constants.LabelInstanceType:       "b200-180gb-sxm-ib.8x",
 					constants.LabelRemediationManaged: "true",
 					constants.LabelRemediationPhase:   string(constants.PhaseDraining),
 				},
@@ -1853,18 +1853,18 @@ func TestGuardrailPreventsCordoningMoreThanMaxAcrossRuns(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
-		RemediationThreshold: config.Duration(60 * 24 * time.Hour),
-		RemediationCooldown:  config.Duration(7 * 24 * time.Hour),
-		DryRun:               false,
-		InstanceTypeFilter:   "b200.*",
-		Action:               config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
-		Guardrails:           config.GuardrailsConfig{GlobalMaxCordoned: 4, PerPoolMaxCordoned: 2},
-		DrainTimeout:         1 * time.Second,
-		ForceAfterEvictionFailure:           true,
-		CrusoeAPISecret:      "test-secret",
-		CrusoeProjectID:      "proj-1",
-		NodeSelector:         config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		CordonThreshold:           config.Duration(55 * 24 * time.Hour),
+		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
+		RemediationCooldown:       config.Duration(7 * 24 * time.Hour),
+		DryRun:                    false,
+		InstanceTypeFilter:        "b200.*",
+		Action:                    config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:                config.GuardrailsConfig{GlobalMaxCordoned: 4, PerPoolMaxCordoned: 2},
+		DrainTimeout:              1 * time.Second,
+		ForceAfterEvictionFailure: true,
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
 	drainMgr := &mockDrainMgr{drainFails: true, forceAfterEvictionFailureFails: true}
@@ -1938,11 +1938,11 @@ func TestGuardrailPercentPreventsCordoningMoreThanMax(t *testing.T) {
 			GlobalMaxCordonedPercent:  &globalPct,
 			PerPoolMaxCordonedPercent: &poolPct,
 		},
-		DrainTimeout:     1 * time.Second,
-		ForceAfterEvictionFailure:       true,
-		CrusoeAPISecret:  "test-secret",
-		CrusoeProjectID:  "proj-1",
-		NodeSelector:      config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		DrainTimeout:              1 * time.Second,
+		ForceAfterEvictionFailure: true,
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
 	drainMgr := &mockDrainMgr{drainFails: true, forceAfterEvictionFailureFails: true}
@@ -1970,6 +1970,7 @@ func TestGuardrailPercentPreventsCordoningMoreThanMax(t *testing.T) {
 		}
 	}
 }
+
 // TestGuardrailCounterIncrementsWithinRun verifies that the in-run counter
 // increments correctly after each cordon, preventing more than perPoolMax
 // nodes from being cordoned in a single run with 0 pre-existing active nodes.
@@ -1994,18 +1995,18 @@ func TestGuardrailCounterIncrementsWithinRun(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
-		RemediationThreshold: config.Duration(60 * 24 * time.Hour),
-		RemediationCooldown:  config.Duration(7 * 24 * time.Hour),
-		DryRun:               false,
-		InstanceTypeFilter:   "b200.*",
-		Action:               config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
-		Guardrails:           config.GuardrailsConfig{GlobalMaxCordoned: 4, PerPoolMaxCordoned: 2},
-		DrainTimeout:         1 * time.Second,
-		ForceAfterEvictionFailure:           true,
-		CrusoeAPISecret:      "test-secret",
-		CrusoeProjectID:      "proj-1",
-		NodeSelector:         config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		CordonThreshold:           config.Duration(55 * 24 * time.Hour),
+		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
+		RemediationCooldown:       config.Duration(7 * 24 * time.Hour),
+		DryRun:                    false,
+		InstanceTypeFilter:        "b200.*",
+		Action:                    config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:                config.GuardrailsConfig{GlobalMaxCordoned: 4, PerPoolMaxCordoned: 2},
+		DrainTimeout:              1 * time.Second,
+		ForceAfterEvictionFailure: true,
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
 	drainMgr := &mockDrainMgr{drainFails: true, forceAfterEvictionFailureFails: true}
@@ -2064,18 +2065,18 @@ func TestGuardrailGlobalLimitBlocksAcrossPools(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
-		RemediationThreshold: config.Duration(60 * 24 * time.Hour),
-		RemediationCooldown:  config.Duration(7 * 24 * time.Hour),
-		DryRun:               false,
-		InstanceTypeFilter:   "b200.*",
-		Action:               config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
-		Guardrails:           config.GuardrailsConfig{GlobalMaxCordoned: 2, PerPoolMaxCordoned: 2},
-		DrainTimeout:         1 * time.Second,
-		ForceAfterEvictionFailure:           true,
-		CrusoeAPISecret:      "test-secret",
-		CrusoeProjectID:      "proj-1",
-		NodeSelector:         config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		CordonThreshold:           config.Duration(55 * 24 * time.Hour),
+		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
+		RemediationCooldown:       config.Duration(7 * 24 * time.Hour),
+		DryRun:                    false,
+		InstanceTypeFilter:        "b200.*",
+		Action:                    config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:                config.GuardrailsConfig{GlobalMaxCordoned: 2, PerPoolMaxCordoned: 2},
+		DrainTimeout:              1 * time.Second,
+		ForceAfterEvictionFailure: true,
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
 	drainMgr := &mockDrainMgr{drainFails: true, forceAfterEvictionFailureFails: true}
@@ -2140,18 +2141,18 @@ func TestGuardrailSuccessfulRemediationDoesNotBlockNextNode(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
-		RemediationThreshold: config.Duration(60 * 24 * time.Hour),
-		RemediationCooldown:  config.Duration(7 * 24 * time.Hour),
-		DryRun:               false,
-		InstanceTypeFilter:   "b200.*",
-		Action:               config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
-		Guardrails:           config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 1},
-		DrainTimeout:         1 * time.Second,
-		ForceAfterEvictionFailure:           true,
-		CrusoeAPISecret:      "test-secret",
-		CrusoeProjectID:      "proj-1",
-		NodeSelector:         config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		CordonThreshold:           config.Duration(55 * 24 * time.Hour),
+		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
+		RemediationCooldown:       config.Duration(7 * 24 * time.Hour),
+		DryRun:                    false,
+		InstanceTypeFilter:        "b200.*",
+		Action:                    config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:                config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 1},
+		DrainTimeout:              1 * time.Second,
+		ForceAfterEvictionFailure: true,
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
 	// Drain succeeds, force drain succeeds, noop succeeds
@@ -2225,11 +2226,11 @@ func TestGuardrailPercentGlobalLimitBlocksAcrossPools(t *testing.T) {
 			GlobalMaxCordonedPercent:  &globalPct,
 			PerPoolMaxCordonedPercent: &poolPct,
 		},
-		DrainTimeout:     1 * time.Second,
-		ForceAfterEvictionFailure:       true,
-		CrusoeAPISecret:  "test-secret",
-		CrusoeProjectID:  "proj-1",
-		NodeSelector:      config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		DrainTimeout:              1 * time.Second,
+		ForceAfterEvictionFailure: true,
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
 	drainMgr := &mockDrainMgr{drainFails: true, forceAfterEvictionFailureFails: true}
@@ -2304,11 +2305,11 @@ func TestGuardrailMixedAbsoluteAndPercent(t *testing.T) {
 			PerPoolMaxCordoned:        3,
 			PerPoolMaxCordonedPercent: &poolPct,
 		},
-		DrainTimeout:     1 * time.Second,
-		ForceAfterEvictionFailure:       true,
-		CrusoeAPISecret:  "test-secret",
-		CrusoeProjectID:  "proj-1",
-		NodeSelector:      config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		DrainTimeout:              1 * time.Second,
+		ForceAfterEvictionFailure: true,
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
 	drainMgr := &mockDrainMgr{drainFails: true, forceAfterEvictionFailureFails: true}
@@ -2357,7 +2358,7 @@ func TestSelfNodeExclusion(t *testing.T) {
 				Name: fmt.Sprintf("node-%d", i),
 				Labels: map[string]string{
 					constants.LabelNodepoolID:   "pool-a",
-					constants.LabelInstanceID:  fmt.Sprintf("vm-%d", i),
+					constants.LabelInstanceID:   fmt.Sprintf("vm-%d", i),
 					constants.LabelProjectID:    "proj-1",
 					constants.LabelInstanceType: "b200-180gb-sxm-ib.8x",
 				},
@@ -2368,18 +2369,18 @@ func TestSelfNodeExclusion(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
-		RemediationThreshold:  config.Duration(60 * 24 * time.Hour),
-		RemediationCooldown:   config.Duration(7 * 24 * time.Hour),
-		DryRun:               false,
-		InstanceTypeFilter:   "b200.*",
-		Action:               config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
-		Guardrails:           config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 5},
-		DrainTimeout:         1 * time.Second,
-		ForceAfterEvictionFailure:           true,
-		CrusoeAPISecret:      "test-secret",
-		CrusoeProjectID:      "proj-1",
-		NodeSelector:         config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		CordonThreshold:           config.Duration(55 * 24 * time.Hour),
+		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
+		RemediationCooldown:       config.Duration(7 * 24 * time.Hour),
+		DryRun:                    false,
+		InstanceTypeFilter:        "b200.*",
+		Action:                    config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:                config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 5},
+		DrainTimeout:              1 * time.Second,
+		ForceAfterEvictionFailure: true,
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
 	drainMgr := &mockDrainMgr{}
@@ -2450,18 +2451,18 @@ func TestSelfNodeExclusionWithEnvNotSet(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
-		RemediationThreshold:  config.Duration(60 * 24 * time.Hour),
-		RemediationCooldown:   config.Duration(7 * 24 * time.Hour),
-		DryRun:               false,
-		InstanceTypeFilter:   "b200.*",
-		Action:               config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
-		Guardrails:           config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 5},
-		DrainTimeout:         1 * time.Second,
-		ForceAfterEvictionFailure:           true,
-		CrusoeAPISecret:      "test-secret",
-		CrusoeProjectID:      "proj-1",
-		NodeSelector:         config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		CordonThreshold:           config.Duration(55 * 24 * time.Hour),
+		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
+		RemediationCooldown:       config.Duration(7 * 24 * time.Hour),
+		DryRun:                    false,
+		InstanceTypeFilter:        "b200.*",
+		Action:                    config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:                config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 5},
+		DrainTimeout:              1 * time.Second,
+		ForceAfterEvictionFailure: true,
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
 	drainMgr := &mockDrainMgr{}
@@ -2500,10 +2501,10 @@ func TestStuckNodeRetriedDespiteGuardrailFull(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "node-stuck",
 				Labels: map[string]string{
-					constants.LabelNodepoolID:        "pool-a",
-					constants.LabelInstanceID:        "vm-stuck",
-					constants.LabelProjectID:         "proj-1",
-					constants.LabelInstanceType:      "b200-180gb-sxm-ib.8x",
+					constants.LabelNodepoolID:         "pool-a",
+					constants.LabelInstanceID:         "vm-stuck",
+					constants.LabelProjectID:          "proj-1",
+					constants.LabelInstanceType:       "b200-180gb-sxm-ib.8x",
 					constants.LabelRemediationManaged: "true",
 					constants.LabelRemediationPhase:   string(constants.PhaseActionRunning),
 				},
@@ -2519,18 +2520,18 @@ func TestStuckNodeRetriedDespiteGuardrailFull(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		CordonThreshold:      config.Duration(10 * time.Minute),
-		RemediationThreshold: config.Duration(20 * time.Minute),
-		RemediationCooldown:  config.Duration(7 * 24 * time.Hour),
-		DryRun:               false,
-		InstanceTypeFilter:   "b200.*",
-		Action:               config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 2},
-		Guardrails:           config.GuardrailsConfig{GlobalMaxCordoned: 1, PerPoolMaxCordoned: 1},
-		DrainTimeout:         1 * time.Second,
+		CordonThreshold:           config.Duration(10 * time.Minute),
+		RemediationThreshold:      config.Duration(20 * time.Minute),
+		RemediationCooldown:       config.Duration(7 * 24 * time.Hour),
+		DryRun:                    false,
+		InstanceTypeFilter:        "b200.*",
+		Action:                    config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 2},
+		Guardrails:                config.GuardrailsConfig{GlobalMaxCordoned: 1, PerPoolMaxCordoned: 1},
+		DrainTimeout:              1 * time.Second,
 		ForceAfterEvictionFailure: true,
-		CrusoeAPISecret:      "test-secret",
-		CrusoeProjectID:      "proj-1",
-		NodeSelector:         config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
 	drainMgr := &mockDrainMgr{}
@@ -2605,18 +2606,18 @@ func TestSkipsNodeCordonedByEngineer(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		CordonThreshold:      config.Duration(10 * time.Minute),
-		RemediationThreshold: config.Duration(20 * time.Minute),
-		RemediationCooldown:  config.Duration(7 * 24 * time.Hour),
-		DryRun:               false,
-		InstanceTypeFilter:   "b200.*",
-		Action:               config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 2},
-		Guardrails:           config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
-		DrainTimeout:         1 * time.Second,
+		CordonThreshold:           config.Duration(10 * time.Minute),
+		RemediationThreshold:      config.Duration(20 * time.Minute),
+		RemediationCooldown:       config.Duration(7 * 24 * time.Hour),
+		DryRun:                    false,
+		InstanceTypeFilter:        "b200.*",
+		Action:                    config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 2},
+		Guardrails:                config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+		DrainTimeout:              1 * time.Second,
 		ForceAfterEvictionFailure: true,
-		CrusoeAPISecret:      "test-secret",
-		CrusoeProjectID:      "proj-1",
-		NodeSelector:         config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
 	drainMgr := &mockDrainMgr{}
@@ -2682,17 +2683,17 @@ func TestSkipsEngineerCordonedNodeAtCordonThreshold(t *testing.T) {
 
 	k8sClient := k8s.NewClient(clientset, nil)
 	cfg := &config.Config{
-		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
-		RemediationThreshold: config.Duration(60 * 24 * time.Hour),
-		DryRun:               false,
-		InstanceTypeFilter:   "b200.*",
-		Action:               config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 2},
-		Guardrails:           config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
-		DrainTimeout:         1 * time.Second,
+		CordonThreshold:           config.Duration(55 * 24 * time.Hour),
+		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
+		DryRun:                    false,
+		InstanceTypeFilter:        "b200.*",
+		Action:                    config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 2},
+		Guardrails:                config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+		DrainTimeout:              1 * time.Second,
 		ForceAfterEvictionFailure: true,
-		CrusoeAPISecret:      "test-secret",
-		CrusoeProjectID:      "proj-1",
-		NodeSelector:         config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
 	}
 
 	deps := Dependencies{
@@ -2726,5 +2727,93 @@ func TestSkipsEngineerCordonedNodeAtCordonThreshold(t *testing.T) {
 	// Node should NOT have our phase label
 	if node.Labels[constants.LabelRemediationPhase] != "" {
 		t.Errorf("node should NOT have remediation.phase label, got %q", node.Labels[constants.LabelRemediationPhase])
+	}
+}
+
+// TestNodePriorityInvalidFallsBack verifies that an invalid nodePriority value
+// falls back to highest-uptime (the default) with a warning, instead of crashing.
+func TestNodePriorityInvalidFallsBack(t *testing.T) {
+	// Same setup as TestNodePriorityConfigWired but with an invalid priority.
+	// Should fall back to highest-uptime, so node-high (2h) gets remediated first.
+	now := time.Now()
+	clientset := fake.NewSimpleClientset(
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-high",
+				Labels: map[string]string{
+					constants.LabelNodepoolID:   "pool-a",
+					constants.LabelInstanceID:   "vm-high",
+					constants.LabelProjectID:    "proj-1",
+					constants.LabelInstanceType: "b200-180gb-sxm-ib.8x",
+				},
+			},
+			Spec: corev1.NodeSpec{Unschedulable: false},
+		},
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-low",
+				Labels: map[string]string{
+					constants.LabelNodepoolID:   "pool-a",
+					constants.LabelInstanceID:   "vm-low",
+					constants.LabelProjectID:    "proj-1",
+					constants.LabelInstanceType: "b200-180gb-sxm-ib.8x",
+				},
+			},
+			Spec: corev1.NodeSpec{Unschedulable: false},
+		},
+	)
+
+	k8sClient := k8s.NewClient(clientset, nil)
+	cfg := &config.Config{
+		CordonThreshold:           config.Duration(30 * time.Minute),
+		RemediationThreshold:      config.Duration(1 * time.Hour),
+		RemediationCooldown:       config.Duration(15 * time.Minute),
+		DryRun:                    false,
+		InstanceTypeFilter:        "b200.*",
+		Action:                    config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:                config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 1},
+		DrainTimeout:              1 * time.Second,
+		ForceAfterEvictionFailure: true,
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodePriority:              "bogus-priority", // invalid — should fall back to highest-uptime
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+	}
+
+	drainMgr := &mockDrainMgr{}
+	stepFactory := &mockStepCreator{step: &actions.NoopStep{}}
+
+	deps := Dependencies{
+		K8sClient:   k8sClient,
+		DrainMgr:    drainMgr,
+		StepFactory: stepFactory,
+		UptimeEval: &mockUptimeEvaluatorMulti{
+			startTimes: map[string]time.Time{
+				"node-high": now.Add(-2 * time.Hour),
+				"node-low":  now.Add(-90 * time.Minute),
+			},
+		},
+		GuardChecker: guardrails.NewChecker(cfg.Guardrails),
+		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
+		Config:       cfg,
+		Recorder:     record.NewFakeRecorder(20),
+	}
+
+	mgr := NewManager(deps)
+	err := mgr.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	// With fallback to highest-uptime, node-high (2h) should be remediated
+	nodeHigh, _ := clientset.CoreV1().Nodes().Get(context.Background(), "node-high", metav1.GetOptions{})
+	if nodeHigh.Labels[constants.LabelRemediationPhase] != string(constants.PhaseMonitored) {
+		t.Errorf("node-high should be remediated (fallback to highest-uptime), phase = %q",
+			nodeHigh.Labels[constants.LabelRemediationPhase])
+	}
+
+	nodeLow, _ := clientset.CoreV1().Nodes().Get(context.Background(), "node-low", metav1.GetOptions{})
+	if nodeLow.Spec.Unschedulable {
+		t.Error("node-low should NOT be cordoned — guardrail exceeded (node-high took the slot via fallback)")
 	}
 }

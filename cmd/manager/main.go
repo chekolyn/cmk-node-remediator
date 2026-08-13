@@ -7,10 +7,11 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -25,6 +26,81 @@ import (
 	"crusoe-node-remediation/internal/k8s"
 	"crusoe-node-remediation/internal/remediation"
 )
+
+func resolveProjectID(envValue, configValue string) string {
+	if envValue != "" {
+		return envValue
+	}
+	return configValue
+}
+
+// CrusoeCredentials holds the resolved API credentials for the Crusoe client.
+type CrusoeCredentials struct {
+	AccessKey string
+	SecretKey string
+	APIURL    string
+	ProjectID string
+}
+
+// BuiltinSecretPath is the mount path for the projected crusoe-secrets volume.
+// Declared as a var (not const) so tests can override it.
+var BuiltinSecretPath = "/etc/crusoe-secrets"
+
+// lookupCredential checks an env var first, then falls back to reading a file
+// at BuiltinSecretPath/<envKey>. This supports two credential modes:
+//   - Custom secret: env vars set via secretKeyRef (file path doesn't exist)
+//   - Built-in secret: files mounted via projected volume (env vars not set)
+func lookupCredential(env func(string) string, envKey string) string {
+	if v := env(envKey); v != "" {
+		return v
+	}
+	filePath := filepath.Join(BuiltinSecretPath, envKey)
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+// resolveCredentials builds CrusoeCredentials from environment variables, mounted
+// secret files, and config. This is the shared logic for both credential modes:
+//   - Built-in secret mode: crusoe-secrets mounted as a projected volume at
+//     /etc/crusoe-secrets (cross-namespace from crusoe-system)
+//   - Custom secret mode: env vars set via secretKeyRef from a same-namespace secret
+//
+// Resolution rules (env var takes priority over file):
+//   - AccessKey: from CRUSOE_ACCESS_KEY env var or file (required)
+//   - SecretKey: from CRUSOE_SECRET_KEY env var or file (required)
+//   - APIURL: from CRUSOE_API_ENDPOINT env var or file, falls back to default if empty
+//   - ProjectID: from CRUSOE_PROJECT_ID env var or file, falls back to config value
+//
+// Returns an error if required fields are missing.
+func resolveCredentials(env func(string) string, configProjectID string) (CrusoeCredentials, error) {
+	accessKey := lookupCredential(env, "CRUSOE_ACCESS_KEY")
+	secretKey := lookupCredential(env, "CRUSOE_SECRET_KEY")
+	apiURL := lookupCredential(env, "CRUSOE_API_ENDPOINT")
+	projectID := resolveProjectID(lookupCredential(env, "CRUSOE_PROJECT_ID"), configProjectID)
+
+	if accessKey == "" {
+		return CrusoeCredentials{}, fmt.Errorf("CRUSOE_ACCESS_KEY must be set")
+	}
+	if secretKey == "" {
+		return CrusoeCredentials{}, fmt.Errorf("CRUSOE_SECRET_KEY must be set")
+	}
+	if apiURL == "" {
+		apiURL = "https://api.cloud.crusoe.ai/v1alpha5"
+	}
+	if projectID == "" {
+		return CrusoeCredentials{}, fmt.Errorf("CRUSOE_PROJECT_ID env var or crusoeProjectId config must be set")
+	}
+
+	return CrusoeCredentials{
+		AccessKey: accessKey,
+		SecretKey: secretKey,
+		APIURL:    apiURL,
+		ProjectID: projectID,
+	}, nil
+}
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.LUTC)
@@ -70,19 +146,10 @@ func main() {
 		os.Exit(0)
 	}
 
-	// 2. Load Crusoe API credentials from mounted Secret
-	accessKey := os.Getenv("CRUSOE_ACCESS_KEY")
-	secretKey := os.Getenv("CRUSOE_SECRET_KEY")
-	apiURL := os.Getenv("CRUSOE_API_URL")
-	if accessKey == "" || secretKey == "" {
-		log.Fatalf("CRUSOE_ACCESS_KEY and CRUSOE_SECRET_KEY must be set")
-	}
-	if apiURL == "" {
-		apiURL = "https://api.cloud.crusoe.ai/v1alpha5"
-	}
-	projectID := cfg.CrusoeProjectID
-	if projectID == "" {
-		log.Fatalf("crusoeProjectId must be set in config")
+	// 2. Load Crusoe API credentials from environment (populated by secretKeyRef)
+	creds, err := resolveCredentials(os.Getenv, cfg.CrusoeProjectID)
+	if err != nil {
+		log.Fatalf("credential error: %v", err)
 	}
 
 	// 3. Create K8s client
@@ -94,7 +161,7 @@ func main() {
 	k8sClient := k8s.NewClient(k8sClientset, nil)
 
 	// 4. Create Crusoe API client (HMAC auth with access/secret key pair)
-	crusoeClient := crusoe.NewClient(apiURL, accessKey, secretKey, projectID)
+	crusoeClient := crusoe.NewClient(creds.APIURL, creds.AccessKey, creds.SecretKey, creds.ProjectID)
 
 	// 4a. Verify Crusoe API access — fail fast if credentials are invalid
 	log.Println("verifying Crusoe API access...")
@@ -129,7 +196,7 @@ func main() {
 		eventNamespace = "default"
 	}
 	recorder := &directEventRecorder{
-		events: k8sClientset.CoreV1().Events(eventNamespace),
+		events:    k8sClientset.CoreV1().Events(eventNamespace),
 		namespace: eventNamespace,
 	}
 
@@ -210,8 +277,8 @@ func (r *directEventRecorder) createEvent(obj runtime.Object, eventType, reason,
 			Kind:       "Node",
 			Name:       node.Name,
 			UID:        node.UID,
-			APIVersion:  "v1",
-			Namespace:   r.namespace,
+			APIVersion: "v1",
+			Namespace:  r.namespace,
 		},
 		Reason:  reason,
 		Message: message,

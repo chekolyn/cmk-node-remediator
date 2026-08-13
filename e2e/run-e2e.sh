@@ -2,28 +2,37 @@
 # E2E Test Script for crusoe-node-remediation
 #
 # Usage:
-#   CRUSOE_API_KEY="your-key" bash e2e/run-e2e.sh [phase] [--values FILE]
+#   bash e2e/run-e2e.sh [phase] [--values FILE] [--use-builtin-secret] [--no-builtin-secret]
 #
 # Phases:
-#   build       — Build and push container image
-#   deploy      — Create secret + install Helm chart (dry-run)
-#   verify      — Check logs for correct node discovery
-#   dry-run-off — Upgrade to dryRun=false (noop action)
-#   vm-reset    — Upgrade to vm-reset action (real API calls)
-#   empirical   — Run vm-reset + collect timing data across multiple passes
-#   cleanup     — Uninstall Helm chart, uncordon nodes
-#   all         — Run build + deploy + verify in sequence
+#   build           — Build and push container image
+#   deploy          — Create secret (if needed) + install Helm chart (dry-run)
+#   deploy-workloads — Create test workloads with PDBs on target nodes
+#   verify          — Check logs for correct node discovery
+#   verify-pdb      — Verify drain respects PDBs (graceful block, then force)
+#   dry-run-off     — Upgrade to dryRun=false (noop action)
+#   vm-reset        — Upgrade to vm-reset action (real API calls)
+#   empirical       — Run vm-reset + collect timing data across multiple passes
+#   cleanup         — Uninstall Helm chart, uncordon nodes, remove test workloads
+#   all             — Run build + deploy + verify in sequence
+#
+# Credential modes:
+#   --use-builtin-secret  Use crusoe-secrets from crusoe-system (default for CMK)
+#   --no-builtin-secret   Use custom secret (requires CRUSOE_ACCESS_KEY/CRUSOE_SECRET_KEY)
+#   (no flag)             Auto-detect from values file (useBuiltinSecret: true/false)
 #
 # Configuration:
 #   Copy e2e/example-values.yaml to e2e/values.yaml and customize.
 #   The values.yaml is gitignored — put your cluster details there.
 #
-# The API key is read from the CRUSOE_API_KEY environment variable.
-# It is never written to disk or saved in shell history.
-#
 # Examples:
-#   CRUSOE_ACCESS_KEY="your-access-key" CRUSOE_SECRET_KEY="your-secret-key" bash e2e/run-e2e.sh all
-#   CRUSOE_ACCESS_KEY="your-access-key" CRUSOE_SECRET_KEY="your-secret-key" bash e2e/run-e2e.sh deploy --values e2e/values.yaml
+#   # CMK cluster (built-in secret — no credentials needed):
+#   bash e2e/run-e2e.sh all --values e2e/values.yaml
+#
+#   # Custom/non-CMK cluster (requires credentials):
+#   CRUSOE_ACCESS_KEY="your-access-key" CRUSOE_SECRET_KEY="your-secret-key" \
+#     bash e2e/run-e2e.sh all --values e2e/values.yaml --no-builtin-secret
+#
 #   bash e2e/run-e2e.sh cleanup  # no key needed
 
 set -euo pipefail
@@ -38,16 +47,35 @@ VALUES_FILE="$SCRIPT_DIR/values.yaml"
 CRUSOE_API_URL="https://api.cloud.crusoe.ai/v1alpha5"
 CRUSOE_ACCESS_KEY="${CRUSOE_ACCESS_KEY:-}"
 CRUSOE_SECRET_KEY="${CRUSOE_SECRET_KEY:-}"
+USE_BUILTIN_SECRET="${USE_BUILTIN_SECRET:-}"
 PHASE="all"
 
 # ── Parse args ────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --values)   VALUES_FILE="$2"; shift 2 ;;
-        --namespace) NAMESPACE="$2"; shift 2 ;;
-        *)          PHASE="$1"; shift ;;
+        --values)             VALUES_FILE="$2"; shift 2 ;;
+        --namespace)          NAMESPACE="$2"; shift 2 ;;
+        --use-builtin-secret)  USE_BUILTIN_SECRET=true; shift ;;
+        --no-builtin-secret)   USE_BUILTIN_SECRET=false; shift ;;
+        *)                    PHASE="$1"; shift ;;
     esac
 done
+
+# ── Detect secret mode ───────────────────────────────────────────
+# Flag overrides values file; values file defaults to built-in (true)
+detect_secret_mode() {
+    if [ -n "$USE_BUILTIN_SECRET" ]; then
+        return
+    fi
+    if grep -q 'useBuiltinSecret: true' "$VALUES_FILE" 2>/dev/null; then
+        USE_BUILTIN_SECRET=true
+    elif grep -q 'useBuiltinSecret: false' "$VALUES_FILE" 2>/dev/null; then
+        USE_BUILTIN_SECRET=false
+    else
+        # Default to built-in mode
+        USE_BUILTIN_SECRET=true
+    fi
+}
 
 # ── Helpers ──────────────────────────────────────────────────────
 log()  { echo -e "\033[0;32m=== $1 ===\033[0m"; }
@@ -61,17 +89,32 @@ check_prereqs() {
 }
 
 ensure_secret() {
-    if [ -z "$CRUSOE_ACCESS_KEY" ] || [ -z "$CRUSOE_SECRET_KEY" ]; then
-        err "CRUSOE_ACCESS_KEY and CRUSOE_SECRET_KEY not set. Export them at runtime:\n  CRUSOE_ACCESS_KEY=\"your-access-key\" CRUSOE_SECRET_KEY=\"your-secret-key\" bash e2e/run-e2e.sh deploy"
-    fi
+    detect_secret_mode
+
+    # Create namespace first (required before copying secrets into it)
     kubectl get namespace "$NAMESPACE" >/dev/null 2>&1 || \
         kubectl create namespace "$NAMESPACE"
-    kubectl create secret generic crusoe-api-credentials \
-        --namespace "$NAMESPACE" \
-        --from-literal=access-key="$CRUSOE_ACCESS_KEY" \
-        --from-literal=secret-key="$CRUSOE_SECRET_KEY" \
-        --from-literal=api-url="$CRUSOE_API_URL" \
-        --dry-run=client -o yaml | kubectl apply -f -
+
+    if [ "$USE_BUILTIN_SECRET" = "true" ]; then
+        log "Using built-in crusoe-secrets from crusoe-system namespace"
+        log "Copying crusoe-secrets from crusoe-system to $NAMESPACE"
+        kubectl get secret crusoe-secrets -n crusoe-system -o yaml \
+            | sed "s/namespace: crusoe-system/namespace: $NAMESPACE/" \
+            | grep -v '^\s*resourceVersion:\|^\s*uid:\|^\s*creationTimestamp:' \
+            | kubectl apply -f -
+        log "crusoe-secrets copied to $NAMESPACE (idempotent)"
+    else
+        if [ -z "$CRUSOE_ACCESS_KEY" ] || [ -z "$CRUSOE_SECRET_KEY" ]; then
+            err "CRUSOE_ACCESS_KEY and CRUSOE_SECRET_KEY not set. Export them at runtime:\n  CRUSOE_ACCESS_KEY=\"your-access-key\" CRUSOE_SECRET_KEY=\"your-secret-key\" bash e2e/run-e2e.sh deploy --no-builtin-secret\nOr use --use-builtin-secret to use the built-in crusoe-secrets."
+        fi
+        kubectl create secret generic crusoe-api-credentials \
+            --namespace "$NAMESPACE" \
+            --from-literal=access-key="$CRUSOE_ACCESS_KEY" \
+            --from-literal=secret-key="$CRUSOE_SECRET_KEY" \
+            --from-literal=api-url="$CRUSOE_API_URL" \
+            --dry-run=client -o yaml | kubectl apply -f -
+        log "Custom secret ensured (idempotent)"
+    fi
 
     # Create image pull secret for Crusoe Container Registry
     # Uses CRUSOE_REGISTRY_TOKEN env var (the full token string from `crusoe registry tokens create`)
@@ -135,10 +178,18 @@ Then edit values.yaml with your cluster details."
         errors=$((errors + 1))
     fi
 
+    detect_secret_mode
+
     local project_id=$(grep 'crusoeProjectId:' "$VALUES_FILE" | head -1 | sed 's/.*crusoeProjectId: *//' | tr -d '"' | sed 's/#.*//')
-    if [ -z "$project_id" ] || [ "$project_id" = '""' ]; then
-        warn "crusoeProjectId is empty — set your Crusoe project ID"
-        errors=$((errors + 1))
+    if [ "$USE_BUILTIN_SECRET" = "true" ]; then
+        if [ -z "$project_id" ] || [ "$project_id" = '""' ]; then
+            log "crusoeProjectId empty — will use CRUSOE_PROJECT_ID from built-in secret"
+        fi
+    else
+        if [ -z "$project_id" ] || [ "$project_id" = '""' ]; then
+            warn "crusoeProjectId is empty — set your Crusoe project ID (required for custom secret mode)"
+            errors=$((errors + 1))
+        fi
     fi
 
     # Check nodeSelector has at least one label uncommented
@@ -171,10 +222,10 @@ Then edit values.yaml with your cluster details."
     echo "$config_yaml" > "$tmp_config"
 
     # Build native binary for validation (cross-compiled binary won't run on host)
-    local native_bin="$REPO_DIR/crusoe-node-remediation-validate"
+    local native_bin="$REPO_DIR/bin/crusoe-node-remediation-validate"
     if [ ! -f "$native_bin" ]; then
         log "Building native binary for validation..."
-        (cd "$REPO_DIR" && go build -o crusoe-node-remediation-validate ./cmd/manager)
+        (cd "$REPO_DIR" && go build -o bin/crusoe-node-remediation-validate ./cmd/manager)
     fi
 
     # Run binary with --validate
@@ -208,10 +259,13 @@ phase_build() {
     cd "$REPO_DIR"
     # Cross-compile binary for linux/amd64 (host may be arm64)
     log "Cross-compiling binary for linux/amd64..."
-    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o crusoe-node-remediation ./cmd/manager
-    chmod +x crusoe-node-remediation
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/crusoe-node-remediation ./cmd/manager
+    chmod +x bin/crusoe-node-remediation
+    # Copy binary to build context root (Dockerfile expects it there)
+    cp bin/crusoe-node-remediation ./crusoe-node-remediation
     # Build amd64 image and push (provenance=false avoids OCI manifest lists)
     docker buildx build --platform linux/amd64 --provenance=false -t "$full_image" --push .
+    rm -f ./crusoe-node-remediation
     log "Image built and pushed: $full_image"
     cd "$SCRIPT_DIR"
 }
@@ -228,6 +282,184 @@ phase_deploy() {
 
     log "Deployed — waiting for first run"
     wait_for_job
+}
+
+# ── Test Workloads (PDB + Drain Verification) ─────────────────────
+# Creates workloads with PodDisruptionBudgets on target nodes so we can
+# verify the drain logic respects PDBs during remediation.
+
+TEST_NAMESPACE="crusoe-e2e-test"
+
+phase_deploy_workloads() {
+    log "Phase: Deploy test workloads with PDBs"
+
+    # Create test namespace
+    kubectl get namespace "$TEST_NAMESPACE" >/dev/null 2>&1 || \
+        kubectl create namespace "$TEST_NAMESPACE"
+
+    # 1. Deployment with PDB (minAvailable=2, replicas=3)
+    #    Drain should block: only 1 pod can be evicted (3 - 2 = 1 allowed)
+    #    With forceAfterEvictionFailure: false → drain fails, node left cordoned
+    #    With forceAfterEvictionFailure: true → force drain bypasses PDB
+    cat <<'EOF' | kubectl apply -f -
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pdb-test
+  namespace: crusoe-e2e-test
+  labels:
+    app: pdb-test
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: pdb-test
+  template:
+    metadata:
+      labels:
+        app: pdb-test
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:alpine
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 64Mi
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pdb-test
+  namespace: crusoe-e2e-test
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: pdb-test
+EOF
+
+    # 2. Deployment without PDB (should evict cleanly)
+    cat <<'EOF' | kubectl apply -f -
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: no-pdb-test
+  namespace: crusoe-e2e-test
+  labels:
+    app: no-pdb-test
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: no-pdb-test
+  template:
+    metadata:
+      labels:
+        app: no-pdb-test
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:alpine
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 64Mi
+EOF
+
+    # 3. Deployment with emptyDir (force drain should delete emptyDir data)
+    cat <<'EOF' | kubectl apply -f -
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: emptydir-test
+  namespace: crusoe-e2e-test
+  labels:
+    app: emptydir-test
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: emptydir-test
+  template:
+    metadata:
+      labels:
+        app: emptydir-test
+    spec:
+      containers:
+        - name: busybox
+          image: busybox
+          command: ["sh", "-c", "while true; do sleep 3600; done"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          emptyDir: {}
+EOF
+
+    log "Waiting for pods to be ready..."
+    kubectl wait --for=condition=ready pod -n "$TEST_NAMESPACE" -l app=pdb-test --timeout=60s 2>/dev/null || true
+    kubectl wait --for=condition=ready pod -n "$TEST_NAMESPACE" -l app=no-pdb-test --timeout=60s 2>/dev/null || true
+    kubectl wait --for=condition=ready pod -n "$TEST_NAMESPACE" -l app=emptydir-test --timeout=60s 2>/dev/null || true
+
+    log "Test workloads deployed:"
+    kubectl get all -n "$TEST_NAMESPACE"
+    kubectl get pdb -n "$TEST_NAMESPACE"
+    log "Test workloads ready"
+}
+
+phase_verify_pdb() {
+    log "Phase: Verify PDB drain behavior"
+    log ""
+    log "Expected behavior depends on forceAfterEvictionFailure setting:"
+    log "  forceAfterEvictionFailure=false → drain blocked by PDB, node left cordoned"
+    log "  forceAfterEvictionFailure=true  → force drain bypasses PDB, pods evicted"
+    log ""
+
+    # Check latest job logs for drain-related messages
+    local job=$(get_latest_job)
+    if [ -z "$job" ]; then
+        warn "No jobs found. Run 'deploy' and 'dry-run-off' or 'vm-reset' first."
+        return 1
+    fi
+
+    log "=== Job logs (drain-related) ==="
+    kubectl logs -n "$NAMESPACE" "$job" 2>&1 | grep -iE "drain|evict|pdb|blocked|force" || echo "(no drain messages found)"
+
+    log ""
+    log "=== PDB status ==="
+    kubectl get pdb -n "$TEST_NAMESPACE" -o wide 2>&1 || echo "(no PDBs found)"
+
+    log ""
+    log "=== Test pods status ==="
+    kubectl get pods -n "$TEST_NAMESPACE" -o wide 2>&1
+
+    log ""
+    log "=== Events (drain/eviction) ==="
+    kubectl get events -n "$TEST_NAMESPACE" --sort-by='.lastTimestamp' 2>&1 | grep -iE "evict|drain|pdb|force" | tail -20 || echo "(no eviction events)"
+
+    log ""
+    log "=== Node state ==="
+    kubectl get nodes -o custom-columns='NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status,SCHEDULABLE:.spec.unschedulable,PHASE:.metadata.labels.crusoe\.ai/remediation\.phase' 2>&1
+
+    log ""
+    log "=== Verification checklist ==="
+    log "1. PDB-protected pods: check if drain was blocked (forceAfterEvictionFailure=false)"
+    log "   or force-evicted (forceAfterEvictionFailure=true)"
+    log "2. No-PDB pods: should be evicted cleanly"
+    log "3. emptyDir pods: should be evicted (force drain deletes emptyDir data)"
+    log "4. Check logs for 'DrainBlocked' or 'ForceDrainFailed' events"
+    log ""
+    log "Manual verification:"
+    log "  kubectl logs -n $NAMESPACE $job | grep -i drain"
+    log "  kubectl get events -n $TEST_NAMESPACE --sort-by='.lastTimestamp'"
 }
 
 phase_verify() {
@@ -453,25 +685,32 @@ phase_cleanup() {
         echo "  Cleaned: $node"
     done
     kubectl delete namespace "$NAMESPACE" 2>/dev/null || true
+    kubectl delete namespace "$TEST_NAMESPACE" 2>/dev/null || true
     log "Cleanup complete"
 }
 
 # ── Main ─────────────────────────────────────────────────────────
     case "$PHASE" in
-        build)       phase_build ;;
-        deploy)      phase_deploy ;;
-        verify)      phase_verify ;;
-        dry-run-off) phase_dry_run_off ;;
-        vm-reset)    phase_vm_reset ;;
-        empirical)   phase_empirical "${@:1}" ;;
-        cleanup)     phase_cleanup ;;
-        all)         phase_build; phase_deploy; phase_verify ;;
+        build)             phase_build ;;
+        deploy)            phase_deploy ;;
+        deploy-workloads)  phase_deploy_workloads ;;
+        verify)            phase_verify ;;
+        verify-pdb)        phase_verify_pdb ;;
+        dry-run-off)       phase_dry_run_off ;;
+        vm-reset)          phase_vm_reset ;;
+        empirical)         phase_empirical "${@:1}" ;;
+        cleanup)           phase_cleanup ;;
+        all)               phase_build; phase_deploy; phase_verify ;;
         *)
-            echo "Usage: bash e2e/run-e2e.sh [build|deploy|verify|dry-run-off|vm-reset|empirical|cleanup|all]"
-            echo "       [--values FILE] [--namespace NS]"
+            echo "Usage: bash e2e/run-e2e.sh [build|deploy|deploy-workloads|verify|verify-pdb|dry-run-off|vm-reset|empirical|cleanup|all]"
+            echo "       [--values FILE] [--namespace NS] [--use-builtin-secret] [--no-builtin-secret]"
             echo ""
-            echo "  Set CRUSOE_API_KEY env var before running (never passed as CLI arg):"
-            echo "    CRUSOE_API_KEY=\"your-key\" bash e2e/run-e2e.sh deploy"
+            echo "  CMK clusters (built-in secret — no credentials needed):"
+            echo "    bash e2e/run-e2e.sh all --values e2e/values.yaml"
+            echo ""
+            echo "  Custom/non-CMK (requires credentials):"
+            echo "    CRUSOE_ACCESS_KEY=\"your-access-key\" CRUSOE_SECRET_KEY=\"your-secret-key\" \\"
+            echo "      bash e2e/run-e2e.sh all --values e2e/values.yaml --no-builtin-secret"
             echo ""
             echo "  empirical [N]  — Run N passes of vm-reset with timing data (default 5)"
             echo ""

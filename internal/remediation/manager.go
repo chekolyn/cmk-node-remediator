@@ -204,7 +204,7 @@ func (m *Manager) Run(ctx context.Context) error {
 			nodesWithUptime = append(nodesWithUptime, nodeWithUptime{info: nodeInfo, uptime: uptime})
 		}
 
-		// Sort nodes by highest uptime (closest to threshold first)
+		// Sort nodes by configured prioritizer (default: highest uptime first)
 		nodesForSort := make([]NodeWithUptime, len(nodesWithUptime))
 		for i, nwu := range nodesWithUptime {
 			nodesForSort[i] = NodeWithUptime{
@@ -213,7 +213,12 @@ func (m *Manager) Run(ctx context.Context) error {
 				Uptime:     nwu.uptime,
 			}
 		}
-		SortNodesByUptime(nodesForSort)
+		prioritizer, err := GetPrioritizer(m.deps.Config.NodePriority)
+		if err != nil {
+			log.Printf("warning: invalid nodePriority %q, using highest-uptime: %v", m.deps.Config.NodePriority, err)
+			prioritizer = highestUptime{}
+		}
+		prioritizer.Sort(nodesForSort)
 
 		// poolTotal includes all nodes (including self-node) for accurate counts.
 		// Guardrail calculations use poolTotal as-is — the self-node is counted
@@ -254,6 +259,20 @@ func (m *Manager) Run(ctx context.Context) error {
 	}
 
 	log.Println("remediation run complete")
+
+	// Summary: list cordoned nodes waiting for remediation threshold
+	cordonedPending := []string{}
+	for _, group := range groups {
+		for _, nodeInfo := range group.Nodes {
+			if nodeInfo.Node.Labels[constants.LabelRemediationPhase] == string(constants.PhaseCordoned) {
+				cordonedPending = append(cordonedPending, nodeInfo.Name)
+			}
+		}
+	}
+	if len(cordonedPending) > 0 {
+		log.Printf("cordoned pending remediation: %d node(s) waiting for remediationThreshold %s — %s",
+			len(cordonedPending), formatUptime(time.Duration(m.deps.Config.RemediationThreshold)), strings.Join(cordonedPending, ", "))
+	}
 
 	if failedCount > 0 {
 		return fmt.Errorf("%d nodes failed remediation: %s", failedCount, strings.Join(failedNodes, "; "))
@@ -351,6 +370,15 @@ func (m *Manager) handleCordonNode(ctx context.Context, nodeInfo discovery.NodeI
 	m.deps.Recorder.Eventf(nodeInfo.Node, corev1.EventTypeNormal, "NodeCordoned", "node cordoned at %v uptime", uptime)
 	log.Printf("node %s cordoned (uptime %s)", nodeInfo.Name, formatUptime(uptime))
 
+	// Log why this node was only cordoned, not remediated — helps humans
+	// understand the two-phase design and that the node will be picked up
+	// for remediation on a future run once uptime crosses remediationThreshold.
+	remaining := time.Duration(m.deps.Config.RemediationThreshold) - uptime
+	if remaining > 0 {
+		log.Printf("node %s cordoned but not remediated: uptime %s is below remediationThreshold %s (will remediate in ~%s)",
+			nodeInfo.Name, formatUptime(uptime), formatUptime(time.Duration(m.deps.Config.RemediationThreshold)), formatUptime(remaining))
+	}
+
 	// Only increment for newly cordoned nodes
 	*globalActive++
 	*poolActive++
@@ -386,12 +414,12 @@ func (m *Manager) handleRemediateNode(ctx context.Context, nodeInfo discovery.No
 	}
 
 	if m.deps.Config.DryRun {
-log.Printf("[dry-run] would remediate node %s with action %s (uptime %s)",
-				nodeInfo.Name, m.deps.Config.Action.Type, formatUptime(uptime))
+		log.Printf("[dry-run] would remediate node %s with action %s (uptime %s)",
+			nodeInfo.Name, m.deps.Config.Action.Type, formatUptime(uptime))
 		return nil
 	}
 
-log.Printf("remediating node %s with action %s (uptime %s)",
+	log.Printf("remediating node %s with action %s (uptime %s)",
 		nodeInfo.Name, m.deps.Config.Action.Type, formatUptime(uptime))
 
 	// Check cross-run retry limit via attempt annotation
@@ -401,7 +429,7 @@ log.Printf("remediating node %s with action %s (uptime %s)",
 			nodeInfo.Name, attempt, m.deps.Config.Action.MaxRetries)
 		m.deps.Recorder.Eventf(nodeInfo.Node, corev1.EventTypeWarning, "MaxRetriesExceeded",
 			"remediation failed after %d attempts, manual intervention required", attempt)
-	log.Printf("node %s max retries exceeded (%d/%d), manual intervention required", nodeInfo.Name, attempt, m.deps.Config.Action.MaxRetries)
+		log.Printf("node %s max retries exceeded (%d/%d), manual intervention required", nodeInfo.Name, attempt, m.deps.Config.Action.MaxRetries)
 		return fmt.Errorf("node %s exceeded max retries (%d/%d)", nodeInfo.Name, attempt, m.deps.Config.Action.MaxRetries)
 	}
 	m.deps.K8sClient.SetAnnotation(ctx, nodeInfo.Name, constants.AnnotationAttempt, strconv.Itoa(attempt+1))
@@ -589,11 +617,11 @@ func (m *Manager) countNodeStates(ctx context.Context) (ready, notReady, remedia
 	}
 
 	remediationPhases := map[string]bool{
-		string(constants.PhaseCordoned):       true,
-		string(constants.PhaseDraining):       true,
-		string(constants.PhaseForceDraining):  true,
-		string(constants.PhaseActionRunning):  true,
-		string(constants.PhaseUncordoning):    true,
+		string(constants.PhaseCordoned):      true,
+		string(constants.PhaseDraining):      true,
+		string(constants.PhaseForceDraining): true,
+		string(constants.PhaseActionRunning): true,
+		string(constants.PhaseUncordoning):   true,
 	}
 
 	for _, node := range nodes.Items {

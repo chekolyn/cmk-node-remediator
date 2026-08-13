@@ -31,7 +31,7 @@ type Step interface {
 // Steps is a sequence of steps with optional waits between them.
 // It implements Step — steps IS a step (composite pattern).
 type Steps struct {
-	steps       []Step
+	steps        []Step
 	waitsBetween []time.Duration
 }
 
@@ -58,14 +58,14 @@ func (s *Steps) Run(ctx context.Context, node NodeInfo, params map[string]string
 // Factory creates steps by type and builds Steps composites from config.
 type Factory struct {
 	k8sClient    *k8s.Client
-	crusoeClient  *crusoe.Client
+	crusoeClient *crusoe.Client
 }
 
 // NewFactory creates a new step factory with all built-in steps registered.
 func NewFactory(k8sClient *k8s.Client, crusoeClient *crusoe.Client) *Factory {
 	return &Factory{
 		k8sClient:    k8sClient,
-		crusoeClient:  crusoeClient,
+		crusoeClient: crusoeClient,
 	}
 }
 

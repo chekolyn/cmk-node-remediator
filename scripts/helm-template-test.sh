@@ -59,7 +59,57 @@ else
     echo "PASS"
 fi
 
-echo "=== Test 7: Security context present ==="
+echo "=== Test 7: Built-in secret mode references crusoe-secrets ==="
+OUTPUT_BUILTIN=$(helm template "$CHART_DIR" --set crusoeProjectId=test-project 2>&1)
+if echo "$OUTPUT_BUILTIN" | grep -q "name: crusoe-secrets"; then
+    echo "PASS"
+else
+    echo "FAIL: built-in mode should reference crusoe-secrets"
+    FAIL=1
+fi
+
+echo "=== Test 8: Built-in secret mode uses envFrom with crusoe-secrets ==="
+if echo "$OUTPUT_BUILTIN" | grep -A2 'envFrom:' | grep -q 'name: crusoe-secrets'; then
+    echo "PASS"
+else
+    echo "FAIL: built-in mode should use envFrom with crusoe-secrets"
+    FAIL=1
+fi
+
+echo "=== Test 9: Custom secret mode references crusoe-api-credentials ==="
+OUTPUT_CUSTOM=$(helm template "$CHART_DIR" --set crusoeProjectId=test-project --set useBuiltinSecret=false --set crusoeApiSecret=crusoe-api-credentials 2>&1)
+if echo "$OUTPUT_CUSTOM" | grep -q "name: crusoe-api-credentials"; then
+    echo "PASS"
+else
+    echo "FAIL: custom mode should reference crusoe-api-credentials"
+    FAIL=1
+fi
+
+echo "=== Test 10: Custom secret mode does NOT have envFrom ==="
+if echo "$OUTPUT_CUSTOM" | grep -q 'envFrom:'; then
+    echo "FAIL: custom mode should not use envFrom"
+    FAIL=1
+else
+    echo "PASS"
+fi
+
+echo "=== Test 11: Built-in mode does NOT have explicit secretKeyRef entries ==="
+if echo "$OUTPUT_BUILTIN" | grep -q 'secretKeyRef:'; then
+    echo "FAIL: built-in mode should use envFrom, not explicit secretKeyRef"
+    FAIL=1
+else
+    echo "PASS"
+fi
+
+echo "=== Test 12: Custom mode uses CRUSOE_API_ENDPOINT env var name ==="
+if echo "$OUTPUT_CUSTOM" | grep -q "name: CRUSOE_API_ENDPOINT"; then
+    echo "PASS"
+else
+    echo "FAIL: custom mode should use CRUSOE_API_ENDPOINT env var"
+    FAIL=1
+fi
+
+echo "=== Test 13: Security context present ==="
 if echo "$OUTPUT" | grep -q "runAsNonRoot: true"; then
     echo "PASS"
 else

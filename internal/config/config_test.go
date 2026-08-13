@@ -282,9 +282,9 @@ func TestValidateConfig(t *testing.T) {
 			name: "missing crusoeApiSecret",
 			cfg: Config{
 				CordonThreshold: Duration(55 * 24 * time.Hour), RemediationThreshold: Duration(60 * 24 * time.Hour), RemediationCooldown: Duration(7 * 24 * time.Hour),
-				Action:       ActionConfig{Type: "vm-reset", Timeout: 30 * time.Minute, MaxRetries: 3},
-				Guardrails:   GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
-				DrainTimeout: 10 * time.Minute,
+				Action:          ActionConfig{Type: "vm-reset", Timeout: 30 * time.Minute, MaxRetries: 3},
+				Guardrails:      GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+				DrainTimeout:    10 * time.Minute,
 				CrusoeProjectID: "proj-1",
 			},
 			wantErr: true,
@@ -358,14 +358,14 @@ func TestParseDuration(t *testing.T) {
 		{"1h30m", 90 * time.Minute, false},
 		{"2d3h30m", 2*24*time.Hour + 3*time.Hour + 30*time.Minute, false},
 		// Equivalences
-		{"1h", 60 * time.Minute, false},  // 1h = 60m
-		{"60m", time.Hour, false},        // 60m = 1h
-		{"1d", 24 * time.Hour, false},    // 1d = 24h
+		{"1h", 60 * time.Minute, false}, // 1h = 60m
+		{"60m", time.Hour, false},       // 60m = 1h
+		{"1d", 24 * time.Hour, false},   // 1d = 24h
 		// Invalid
 		{"invalid", 0, true},
 		{"", 0, true},
 		{"d", 0, true},
-		{"123", 0, true},  // no unit suffix
+		{"123", 0, true}, // no unit suffix
 		// Negative is valid in Go's time.ParseDuration
 		{"-5d", -120 * time.Hour, false},
 		// Weeks
@@ -374,11 +374,11 @@ func TestParseDuration(t *testing.T) {
 		{"1w3d", 10 * 24 * time.Hour, false},
 		{"1w12h", 7*24*time.Hour + 12*time.Hour, false},
 		// Equivalences with weeks
-		{"1w", 168 * time.Hour, false},   // 1w = 168h
-		{"7d", 168 * time.Hour, false},   // 7d = 168h = 1w
+		{"1w", 168 * time.Hour, false}, // 1w = 168h
+		{"7d", 168 * time.Hour, false}, // 7d = 168h = 1w
 		// Weeks edge cases
 		{"0w", 0, false},
-		{"w", 0, true},  // no number before 'w'
+		{"w", 0, true}, // no number before 'w'
 		{"2w1d6h30m", 2*7*24*time.Hour + 24*time.Hour + 6*time.Hour + 30*time.Minute, false},
 	}
 

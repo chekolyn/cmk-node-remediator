@@ -37,7 +37,7 @@ func (s *VMStopStep) Run(ctx context.Context, node NodeInfo, params map[string]s
 		opID, err := s.crusoeClient.StopVM(ctx, node.InstanceID)
 		if err != nil {
 			lastErr = err
-			log.Printf("step vm-stop: API call failed (attempt %d): %v", attempt, err)
+			log.Printf("step vm-stop: Crusoe API call failed (attempt %d): %v", attempt, err)
 			sleepOrCancel(ctx, time.Duration(1<<uint(attempt-1))*time.Second)
 			continue
 		}
@@ -54,7 +54,7 @@ func (s *VMStopStep) Run(ctx context.Context, node NodeInfo, params map[string]s
 		// Phase 2: Verify VM is stopped
 		if err := s.waitForState(ctx, node.InstanceID, "STATE_STOPPED"); err != nil {
 			lastErr = err
-			log.Printf("step vm-stop: VM not stopped after API call (attempt %d): %v", attempt, err)
+			log.Printf("step vm-stop: VM not stopped after Crusoe API call (attempt %d): %v", attempt, err)
 			continue
 		}
 

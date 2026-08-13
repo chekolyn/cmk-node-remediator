@@ -78,6 +78,12 @@ spec:
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.namespace
+                {{- if .Values.useBuiltinSecret }}
+                # Built-in crusoe-secrets — must be copied to the release namespace
+                # before install (e2e/run-e2e.sh does this automatically). envFrom
+                # loads all keys as env vars.
+                {{- else }}
+                # Custom secret — keys differ from built-in, so map explicitly.
                 - name: CRUSOE_ACCESS_KEY
                   valueFrom:
                     secretKeyRef:
@@ -88,11 +94,17 @@ spec:
                     secretKeyRef:
                       name: {{ .Values.crusoeApiSecret }}
                       key: secret-key
-                - name: CRUSOE_API_URL
+                - name: CRUSOE_API_ENDPOINT
                   valueFrom:
                     secretKeyRef:
                       name: {{ .Values.crusoeApiSecret }}
                       key: api-url
+                {{- end }}
+              {{- if .Values.useBuiltinSecret }}
+              envFrom:
+                - secretRef:
+                    name: crusoe-secrets
+              {{- end }}
               volumeMounts:
                 - name: config
                   mountPath: /etc/crusoe-node-remediation

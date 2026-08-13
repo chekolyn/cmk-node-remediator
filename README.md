@@ -8,23 +8,24 @@ clusters with B200 GPU nodes affected by the NVIDIA 60-day NVLink firmware bug.
 
 ## TLDR
 
-```bash
-# 1. Create API secret
-kubectl create secret generic crusoe-api-credentials \
-  --namespace crusoe-node-remediation \
-  --from-literal=api-key=YOUR_API_KEY \
-  --from-literal=api-url=https://api.cloud.crusoe.ai/v1alpha5
+For **CMK clusters** (uses built-in `crusoe-secrets` from `crusoe-system` namespace — no manual secret creation):
 
-# 2. Install with Helm (observation mode — no changes to nodes)
+```bash
+# 1. Create the namespace
+kubectl create namespace crusoe-node-remediation
+
+# 2. Copy the built-in secret to the release namespace (required before install)
+kubectl get secret crusoe-secrets -n crusoe-system -o yaml \
+  | sed 's/namespace: crusoe-system/namespace: crusoe-node-remediation/' \
+  | grep -v '^\s*resourceVersion:\|^\s*uid:\|^\s*creationTimestamp:' \
+  | kubectl apply -f -
+
+# 3. Install with Helm (safe defaults — dry-run, 1 node max, no force drain)
 helm install crusoe-node-remediation ./helm/crusoe-node-remediation \
-  --namespace crusoe-node-remediation \
-  --create-namespace \
-  --set dryRun=true \
-  --set crusoeProjectId=YOUR_PROJECT_ID \
-  --set nodeSelector.matchLabels.crusoe\.ai/project\.id=YOUR_PROJECT_ID
+  --namespace crusoe-node-remediation
 
 # 3. Watch the logs
-kubectl logs -n crusoe-node-remediation -f job/$(kubectl get jobs -n crusoe-node-remediation --sort-by=.metadata.creationTimestamp -o name | tail -1)
+kubectl logs -n crusoe-node-remediation -f deployment/crusoe-node-remediation
 
 # 4. When ready, switch to live mode
 helm upgrade crusoe-node-remediation ./helm/crusoe-node-remediation \
@@ -40,7 +41,7 @@ This tool runs as a CronJob and performs the following on each scheduled run:
 
 1. **Discovers** nodes matching your label selector and instance type filter
 2. **Queries uptime** via the K8s stats summary API (`node.startTime`)
-3. **Cordons** nodes that exceed `cordonThreshold` uptime
+3. **Cordons** nodes that exceed `cordonThreshold` uptime (marks unschedulable, no drain)
 4. **Drains** nodes that exceed `remediationThreshold` uptime (graceful → force)
 5. **Executes** the configured remediation action (`vm-reset`, `noop`, etc.)
 6. **Uncordons** nodes after successful remediation
@@ -53,8 +54,58 @@ This tool runs as a CronJob and performs the following on each scheduled run:
 - **Cooldown** — skips nodes remediated within the cooldown period
 - **Max retries** — leaves nodes cordoned for manual intervention after N failed attempts
 - **Dry-run mode** — logs all actions without executing cordon/drain/remediation
-- **Required affinity** — pod won't schedule on nodes being remediated
-- **Tolerations** — pod can schedule on cordoned nodes (safety net for when all nodes are cordoned)
+- **Required affinity** — pod prefers to schedule on nodes not being remediated (avoids remediation phases via `crusoe.ai/remediation.phase` label)
+- **Tolerations** — pod tolerates remediation taints as a safety net, so it can still schedule when all nodes are cordoned (otherwise the CronJob would be stuck in Pending)
+
+### Node Lifecycle
+
+The remediation controller uses a two-phase threshold approach. The defaults below
+target the B200 60-day NVLink firmware bug — adjust thresholds for your workload.
+
+```mermaid
+flowchart LR
+    subgraph Normal[Normal]
+        N1[pods schedule normally]
+        N2[no taints]
+    end
+
+    subgraph Cordoned[Cordoned]
+        C1[mark unschedulable]
+        C2[taint: scheduled]
+        C3[existing pods stay]
+    end
+
+    subgraph Remediating[Remediating]
+        direction TB
+        D[Draining: evict pods]
+        D2[taint: draining]
+        F[Force-Draining: ignore PDBs]
+        F2[taint: draining]
+        A[Action-Running: vm-reset]
+        A2[taint: maintenance]
+        U[Uncordoning: remove taints]
+        U2[removing: maintenance + scheduled]
+        D --> F --> A --> U
+    end
+
+    Normal -->|cordonThreshold 55d| Cordoned
+    Cordoned -->|remediationThreshold 60d| Remediating
+    Remediating -->|complete| Normal
+    Remediating -.->|7d cooldown| Normal
+```
+
+| Phase | Label | Trigger | Action | Taint | Pods |
+|-------|-------|---------|--------|-------|------|
+| **monitored** | `crusoe.ai/remediation.phase=monitored` | discovered, below threshold | — | none | schedule normally |
+| **cordoned** | `crusoe.ai/remediation.phase=cordoned` | uptime ≥ cordonThreshold (55d) | mark unschedulable | `crusoe.ai/remediation.scheduled:NoSchedule` | existing stay, no new |
+| **draining** | `crusoe.ai/remediation.phase=draining` | uptime ≥ remediationThreshold (60d) | evict all pods | `crusoe.ai/remediation.draining:NoSchedule` | evicted gracefully |
+| **force-draining** | `crusoe.ai/remediation.phase=force-draining` | drain blocked + `forceAfterEvictionFailure: true` | force evict (ignore PDBs) | `crusoe.ai/remediation.draining:NoSchedule` | force-evicted |
+| **action-running** | `crusoe.ai/remediation.phase=action-running` | drain complete | vm-reset (reboot VM) | `crusoe.ai/remediation.maintenance:NoSchedule` | VM rebooting |
+| **uncordoning** | `crusoe.ai/remediation.phase=uncordoning` | action + boot verified | remove taints, mark schedulable | removing: `maintenance` + `scheduled` | schedule normally |
+
+> **Note:** Thresholds are examples for the B200 NVLink bug. Your mileage may vary —
+> tune `cordonThreshold`, `remediationThreshold`, and `remediationCooldown` for your
+> cluster's workload and hardware.
 
 ---
 
@@ -62,27 +113,44 @@ This tool runs as a CronJob and performs the following on each scheduled run:
 
 ### Prerequisites
 
-- Crusoe Managed Kubernetes (CMK) cluster
-- Crusoe API key (for VM actions like `vm-reset`)
-- Crusoe Container Registry access (for pulling the image)
 - Helm 3.x
 - `kubectl` with cluster admin access
+- **For CMK clusters (default):** Nothing else needed — `crusoe-secrets` is auto-provisioned
+- **For custom/non-CMK clusters:** Crusoe API credentials (access key + secret key)
+- **Optional:** Crusoe Container Registry access if using private images
 
-### Step 1: Create Secrets
+### Step 1: Setup
+
+**For CMK clusters (most users):**
+
+```bash
+# Create the namespace first
+kubectl create namespace crusoe-node-remediation
+
+# Copy the built-in secret from crusoe-system to the release namespace
+kubectl get secret crusoe-secrets -n crusoe-system -o yaml \
+  | sed 's/namespace: crusoe-system/namespace: crusoe-node-remediation/' \
+  | grep -v '^\s*resourceVersion:\|^\s*uid:\|^\s*creationTimestamp:' \
+  | kubectl apply -f -
+```
+
+**For custom/non-CMK clusters:**
 
 ```bash
 # Create namespace
 kubectl create namespace crusoe-node-remediation
 
-# Crusoe API credentials (for VM actions)
+# Create API credentials secret
 kubectl create secret generic crusoe-api-credentials \
   --namespace crusoe-node-remediation \
-  --from-literal=api-key=YOUR_API_KEY \
+  --from-literal=access-key=YOUR_ACCESS_KEY \
+  --from-literal=secret-key=YOUR_SECRET_KEY \
   --from-literal=api-url=https://api.cloud.crusoe.ai/v1alpha5
+```
 
-# Image pull secret (for Crusoe Container Registry)
-# Username: your Crusoe account email
-# Password: full token string from `crusoe registry tokens create`
+**Optional: Image pull secret (if using private registry):**
+
+```bash
 kubectl create secret docker-registry crusoe-registry-pull \
   --namespace crusoe-node-remediation \
   --docker-server=registry.YOUR-LOCATION.ccr.crusoecloudcompute.com \
@@ -90,7 +158,7 @@ kubectl create secret docker-registry crusoe-registry-pull \
   --docker-password=YOUR_REGISTRY_TOKEN
 ```
 
-### Step 2: Create a values.yaml
+### Step 2: Create values.yaml
 
 ```yaml
 image:
@@ -100,17 +168,12 @@ image:
 
 imagePullSecret: crusoe-registry-pull
 
-# Target nodes in your project
+# Target nodes (optional — leave empty for all nodes)
 nodeSelector:
   matchLabels:
-    crusoe.ai/project.id: "YOUR-PROJECT-ID"
+    # crusoe.ai/project.id: "YOUR-PROJECT-ID"
 
 instanceTypeFilter: "b200.*"
-
-# Start conservative — only 1 node at a time
-guardrails:
-  globalMaxCordoned: 1
-  perPoolMaxCordoned: 1
 
 # B200 60-day NVLink bug thresholds
 cordonThreshold: 55d
@@ -120,18 +183,18 @@ remediationCooldown: 7d
 action:
   type: vm-reset
   timeout: 30m
-  maxRetries: 3
+  maxRetries: 5
 
 drainTimeout: 10m
-forceAfterEvictionFailure: true
+forceAfterEvictionFailure: false
 
-crusoeApiSecret: crusoe-api-credentials
-crusoeProjectId: "YOUR-PROJECT-ID"
+# Built-in secret (default for CMK)
+useBuiltinSecret: true
 
 # Start in observation mode
 dryRun: true
 
-schedule: "0 * * * *"   # every hour
+schedule: "0 0 * * *"   # daily at midnight
 ```
 
 ### Step 3: Deploy in Observation Mode
@@ -149,7 +212,7 @@ kubectl logs -n crusoe-node-remediation -f job/$(kubectl get jobs -n crusoe-node
 
 You'll see output like:
 ```
-config: thresholds=(cordon=55d, remediation=60d, cooldown=7d), action=(type=vm-reset, dryRun=true), guardrails=(global=1, perPool=1), drain=(timeout=10m, force=true)
+config: thresholds=(cordon=55d, remediation=60d, cooldown=7d), action=(type=vm-reset, dryRun=true), guardrails=(global=1, perPool=1), drain=(timeout=10m, force=false)
 cluster: 458 nodes (450 ready, 3 notReady, 0 remediating)
 discovered 12 nodepools, 200 targeted nodes
 targeting: crusoe.ai/project.id=YOUR-PROJECT-ID, beta.kubernetes.io/instance-type=~b200.*
@@ -227,18 +290,19 @@ See [docs/configuration.md](docs/configuration.md) for the full reference.
 
 | Setting | Default | Description |
 |--------|---------|-------------|
-| `dryRun` | `false` | Log only, don't touch nodes |
+| `dryRun` | `true` | Log only, don't touch nodes |
 | `cordonThreshold` | `55d` | Uptime at which to cordon |
 | `remediationThreshold` | `60d` | Uptime at which to remediate |
 | `remediationCooldown` | `7d` | Skip nodes remediated within this period |
 | `action.type` | `vm-reset` | Remediation action (`vm-reset`, `vm-stop`, `vm-start`, `vm-delete`, `noop`) |
-| `action.maxRetries` | `3` | Max attempts before leaving cordoned for manual intervention |
-| `guardrails.globalMaxCordoned` | `5` | Max nodes being remediated cluster-wide |
-| `guardrails.perPoolMaxCordoned` | `2` | Max nodes being remediated per nodepool |
+| `action.maxRetries` | `5` | Max attempts before leaving cordoned for manual intervention |
+| `guardrails.globalMaxCordoned` | `1` | Max nodes being remediated cluster-wide |
+| `guardrails.perPoolMaxCordoned` | `1` | Max nodes being remediated per nodepool |
 | `drainTimeout` | `10m` | Graceful drain timeout |
-| `forceAfterEvictionFailure` | `true` | Bypass PDBs and delete emptyDir data if [eviction](https://kubernetes.io/docs/concepts/scheduling-eviction/api-eviction/) fails |
-| `schedule` | `0 * * * *` | Cron schedule (every hour) |
+| `forceAfterEvictionFailure` | `false` | Bypass PDBs and delete emptyDir data if [eviction](https://kubernetes.io/docs/concepts/scheduling-eviction/api-eviction/) fails |
+| `schedule` | `0 0 * * *` | Cron schedule (daily at midnight) |
 | `instanceTypeFilter` | `b200.*` | Regex filter for `beta.kubernetes.io/instance-type` label |
+| `useBuiltinSecret` | `true` | Use built-in `crusoe-secrets` from `crusoe-system` namespace |
 
 ### Conservative Starting Point
 
@@ -501,7 +565,7 @@ The tool requires these permissions:
 
 ### Is it safe to run in production?
 
-Yes — start with `dryRun: true` and `globalMaxCordoned: 1`. You'll only observe what would happen. Progress to `noop` action to test cordon/drain/uncordon, then to `vm-reset` for full remediation.
+Yes — start with `dryRun: true` (the default) and `globalMaxCordoned: 1` (also the default). You'll only observe what would happen. Progress to `noop` action to test cordon/drain/uncordon, then to `vm-reset` for full remediation.
 
 ### What happens if drain fails?
 
@@ -530,8 +594,28 @@ After successful remediation, the `crusoe.ai/remediation.action-completed-at` an
 
 The CronJob pod has tolerations for remediation taints and `node.kubernetes.io/unschedulable`, so it can still schedule on cordoned nodes. It also has required affinity to avoid nodes being actively remediated.
 
----
+### Notifications
 
-## License
-
-Internal — Crusoe Cloud
+> **TODO:** Notifications are not yet implemented. The `slackWebhookUrl` value exists in `values.yaml` but is currently a no-op. Planned support:
+> - Slack notifications for `NodeCordoned`, `NodeRemediated`, `MaxRetriesExceeded` events
+> - Configurable severity thresholds (e.g., only alert on failures, not successful remediations)
+> - Message content per notification:
+>   - Node name and nodepool
+>   - Uptime before action (e.g., `60d12h`)
+>   - Action taken (e.g., `vm-reset`)
+>   - Duration of full cycle (cordon → drain → reset → uncordon)
+>   - Boot ID change (old → new, confirms reboot happened)
+>   - Success or failure status
+>   - Attempt number (e.g., `attempt 1/5`)
+>   - Guardrail context (e.g., `2/4 global, 2/2 pool`)
+> - Example message:
+>   ```
+>   ✅ Node Remediated
+>   Node: np-your-node-1.us-southcentral1-a.compute.internal
+>   Nodepool: your-nodepool
+>   Action: vm-reset (attempt 1/5)
+>   Uptime before: 60d12h
+>   Duration: 1m15s
+>   Boot ID: 4ece6878… → 1ca589d8…
+>   Guardrails: 2/4 global, 2/2 pool
+>   ```
