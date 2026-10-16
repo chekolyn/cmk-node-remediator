@@ -257,15 +257,7 @@ phase_build() {
 
     echo "Building: $full_image"
     cd "$REPO_DIR"
-    # Cross-compile binary for linux/amd64 (host may be arm64)
-    log "Cross-compiling binary for linux/amd64..."
-    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/crusoe-node-remediation ./cmd/manager
-    chmod +x bin/crusoe-node-remediation
-    # Copy binary to build context root (Dockerfile expects it there)
-    cp bin/crusoe-node-remediation ./crusoe-node-remediation
-    # Build amd64 image and push (provenance=false avoids OCI manifest lists)
-    docker buildx build --platform linux/amd64 --provenance=false -t "$full_image" --push .
-    rm -f ./crusoe-node-remediation
+    make docker-build-push IMAGE_REPO="$repo" IMAGE_TAG="$tag"
     log "Image built and pushed: $full_image"
     cd "$SCRIPT_DIR"
 }
@@ -297,10 +289,11 @@ phase_deploy_workloads() {
     kubectl get namespace "$TEST_NAMESPACE" >/dev/null 2>&1 || \
         kubectl create namespace "$TEST_NAMESPACE"
 
-    # 1. Deployment with PDB (minAvailable=2, replicas=3)
-    #    Drain should block: only 1 pod can be evicted (3 - 2 = 1 allowed)
+    # 1. Deployment with PDB (minAvailable=7, replicas=8)
+    #    Drain should block: only 1 pod can be evicted (8 - 7 = 1 allowed)
     #    With forceAfterEvictionFailure: false → drain fails, node left cordoned
     #    With forceAfterEvictionFailure: true → force drain bypasses PDB
+    #    preStop sleep + long grace period simulates slow-shutdown workload
     cat <<'EOF' | kubectl apply -f -
 apiVersion: apps/v1
 kind: Deployment
@@ -310,7 +303,7 @@ metadata:
   labels:
     app: pdb-test
 spec:
-  replicas: 3
+  replicas: 8
   selector:
     matchLabels:
       app: pdb-test
@@ -319,9 +312,14 @@ spec:
       labels:
         app: pdb-test
     spec:
+      terminationGracePeriodSeconds: 300
       containers:
         - name: nginx
           image: nginx:alpine
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 240"]
           resources:
             requests:
               cpu: 10m
@@ -336,13 +334,13 @@ metadata:
   name: pdb-test
   namespace: crusoe-e2e-test
 spec:
-  minAvailable: 2
+  minAvailable: 7
   selector:
     matchLabels:
       app: pdb-test
 EOF
 
-    # 2. Deployment without PDB (should evict cleanly)
+    # 2. Deployment without PDB (should evict cleanly, but slowly)
     cat <<'EOF' | kubectl apply -f -
 apiVersion: apps/v1
 kind: Deployment
@@ -352,7 +350,7 @@ metadata:
   labels:
     app: no-pdb-test
 spec:
-  replicas: 2
+  replicas: 8
   selector:
     matchLabels:
       app: no-pdb-test
@@ -361,9 +359,14 @@ spec:
       labels:
         app: no-pdb-test
     spec:
+      terminationGracePeriodSeconds: 300
       containers:
         - name: nginx
           image: nginx:alpine
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 240"]
           resources:
             requests:
               cpu: 10m
@@ -374,6 +377,7 @@ spec:
 EOF
 
     # 3. Deployment with emptyDir (force drain should delete emptyDir data)
+    #    preStop sleep simulates slow-shutdown workload
     cat <<'EOF' | kubectl apply -f -
 apiVersion: apps/v1
 kind: Deployment
@@ -383,7 +387,7 @@ metadata:
   labels:
     app: emptydir-test
 spec:
-  replicas: 2
+  replicas: 8
   selector:
     matchLabels:
       app: emptydir-test
@@ -392,10 +396,15 @@ spec:
       labels:
         app: emptydir-test
     spec:
+      terminationGracePeriodSeconds: 300
       containers:
         - name: busybox
           image: busybox
           command: ["sh", "-c", "while true; do sleep 3600; done"]
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 240"]
           volumeMounts:
             - name: data
               mountPath: /data
@@ -544,7 +553,7 @@ phase_empirical() {
     local sched=$(grep 'schedule:' "$VALUES_FILE" | head -1 | sed 's/.*schedule: *//' | tr -d '"')
     local cordon=$(grep 'cordonThreshold:' "$VALUES_FILE" | head -1 | sed 's/.*cordonThreshold: *//' | tr -d '"')
     local action=$(grep 'remediationThreshold:' "$VALUES_FILE" | head -1 | sed 's/.*remediationThreshold: *//' | tr -d '"')
-    local cdn=$(grep 'remediationRemediationCooldown:' "$VALUES_FILE" | head -1 | sed 's/.*remediationRemediationCooldown: *//' | tr -d '"')
+    local cdn=$(grep 'remediationCooldown:' "$VALUES_FILE" | head -1 | sed 's/.*remediationCooldown: *//' | tr -d '"')
     local act_type=$(grep '  type:' "$VALUES_FILE" | head -1 | sed 's/.*type: *//' | tr -d '"')
     local gmax=$(grep 'globalMaxCordoned:' "$VALUES_FILE" | head -1 | sed 's/.*globalMaxCordoned: *//' | tr -d '"')
     local pmax=$(grep 'perPoolMaxCordoned:' "$VALUES_FILE" | head -1 | sed 's/.*perPoolMaxCordoned: *//' | tr -d '"')

@@ -4,7 +4,7 @@
 -include .env
 
 BINARY_NAME=crusoe-node-remediation
-IMAGE_TAG?=v0.0.1
+IMAGE_TAG?=v0.0.34
 IMAGE_REPO?=
 
 build:

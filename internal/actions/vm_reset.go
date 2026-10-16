@@ -25,11 +25,9 @@ type VMResetStep struct {
 func (s *VMResetStep) Type() string { return "vm-reset" }
 
 func (s *VMResetStep) Run(ctx context.Context, node NodeInfo, params map[string]string) error {
-	// Capture bootID before reset — this is our "before" snapshot.
-	// Note: We do NOT skip based on node Ready status, because the node is
-	// always Ready when we start (the B200 60-day bug is about firmware uptime,
-	// not node health). The remediationCooldown check in the remediation manager handles
-	// "already remediated" — this step always proceeds with the reset.
+	// Capture bootID before reset to verify the reboot actually happened.
+	// We always proceed with the reset — the remediation manager's cooldown
+	// check already ensures we don't re-remediate recently rebooted nodes.
 	k8sNode, err := s.k8sClient.GetNode(ctx, node.Name)
 	if err != nil {
 		return fmt.Errorf("step vm-reset: failed to get node %s: %w", node.Name, err)

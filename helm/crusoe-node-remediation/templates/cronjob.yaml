@@ -78,6 +78,12 @@ spec:
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.namespace
+                {{- if .Values.journaldLogging }}
+                # Enable dual logging: stdout + journald (forwarded to
+                # Crusoe Managed Logs console by the Crusoe Watch Agent).
+                - name: JOURNALD_LOGGING
+                  value: "true"
+                {{- end }}
                 {{- if .Values.useBuiltinSecret }}
                 # Built-in crusoe-secrets — must be copied to the release namespace
                 # before install (e2e/run-e2e.sh does this automatically). envFrom
@@ -112,9 +118,24 @@ spec:
                 - name: tmp
                   mountPath: /tmp
                   readOnly: false
+                {{- if .Values.journaldLogging }}
+                # Mount the host's journald socket so the binary can write
+                # directly to the systemd journal. The Crusoe Watch Agent
+                # (Vector) collects all journald entries and forwards them
+                # to the Crusoe Managed Logs console.
+                - name: journald
+                  mountPath: /run/systemd/journal
+                  readOnly: true
+                {{- end }}
           volumes:
             - name: config
               configMap:
                 name: {{ include "crusoe-node-remediation.fullname" . }}
             - name: tmp
               emptyDir: {}
+            {{- if .Values.journaldLogging }}
+            - name: journald
+              hostPath:
+                path: /run/systemd/journal
+                type: DirectoryOrCreate
+            {{- end }}

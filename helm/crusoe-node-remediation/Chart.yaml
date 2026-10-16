@@ -1,9 +1,9 @@
 apiVersion: v2
 name: crusoe-node-remediation
-description: Automatically cordons, drains, and takes configurable remediation actions on B200 GPU nodes approaching the NVIDIA 60-day NVLink firmware bug threshold
+description: Automatically cordons, drains, and takes configurable remediation actions on nodes approaching critical uptime thresholds
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+version: 0.0.23
+appVersion: "0.0.23"
 keywords:
   - kubernetes
   - node

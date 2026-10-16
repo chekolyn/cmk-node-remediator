@@ -28,9 +28,13 @@ func (s *VMDeleteStep) Run(ctx context.Context, node NodeInfo, params map[string
 	// 1. Idempotency check: does VM still exist?
 	_, err := s.crusoeClient.GetVMState(ctx, node.InstanceID)
 	if err != nil {
-		// VM not found — already deleted
-		log.Printf("step vm-delete: VM %s not found, already deleted, skipping", node.InstanceID)
-		return nil
+		if crusoe.IsNotFoundError(err) {
+			// VM not found — already deleted
+			log.Printf("step vm-delete: VM %s not found, already deleted, skipping", node.InstanceID)
+			return nil
+		}
+		// Other API error (500, network, auth) — don't skip, proceed with delete
+		log.Printf("step vm-delete: warning: failed to check VM %s state: %v (proceeding with delete)", node.InstanceID, err)
 	}
 
 	// 2. Act + verify with retries

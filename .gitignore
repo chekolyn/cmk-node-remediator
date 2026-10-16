@@ -35,3 +35,4 @@ e2e/local.env
 e2e/values-generated.yaml
 e2e/values.yaml
 e2e/values.yaml
+cmk-node-remediation/manager

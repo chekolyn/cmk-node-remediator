@@ -146,7 +146,6 @@ type Config struct {
 	CrusoeProjectID           string             `yaml:"crusoeProjectId"`
 	DryRun                    bool               `yaml:"dryRun"`
 	NodePriority              string             `yaml:"nodePriority,omitempty"`
-	SlackWebhookURL           string             `yaml:"slackWebhookUrl,omitempty"`
 	NodeSelector              NodeSelectorConfig `yaml:"nodeSelector,omitempty"`
 }
 
@@ -185,7 +184,7 @@ func defaultConfig() *Config {
 		Schedule:             "0 0 * * *",
 		InstanceTypeFilter:   "b200.*",
 		CordonThreshold:      Duration(55 * 24 * time.Hour), // 55 days
-		RemediationThreshold: Duration(60 * 24 * time.Hour), // 60 days
+		RemediationThreshold: Duration(55 * 24 * time.Hour), // 55 days (equal to cordon = back-to-back)
 		RemediationCooldown:  Duration(7 * 24 * time.Hour),  // 7 days
 		Action: ActionConfig{
 			Type:       "vm-reset",
@@ -196,7 +195,7 @@ func defaultConfig() *Config {
 			GlobalMaxCordoned:  5,
 			PerPoolMaxCordoned: 2,
 		},
-		DrainTimeout:              10 * time.Minute,
+		DrainTimeout:              120 * time.Minute,
 		ForceAfterEvictionFailure: true,
 		DryRun:                    false,
 		NodePriority:              "highest-uptime",
@@ -204,8 +203,8 @@ func defaultConfig() *Config {
 }
 
 func (c *Config) Validate() error {
-	if c.CordonThreshold >= c.RemediationThreshold {
-		return fmt.Errorf("cordonThreshold (%v) must be less than remediationThreshold (%v)", c.CordonThreshold, c.RemediationThreshold)
+	if c.CordonThreshold > c.RemediationThreshold {
+		return fmt.Errorf("cordonThreshold (%v) must not exceed remediationThreshold (%v)", c.CordonThreshold, c.RemediationThreshold)
 	}
 	if c.CordonThreshold <= 0 {
 		return fmt.Errorf("cordonThreshold must be positive")

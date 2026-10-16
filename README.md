@@ -2,7 +2,7 @@
 
 A Kubernetes CronJob that automatically cordons, drains, and remediates nodes
 approaching critical uptime thresholds. Built for Crusoe Managed Kubernetes (CMK)
-clusters with B200 GPU nodes affected by the NVIDIA 60-day NVLink firmware bug.
+clusters with nodes affected by the [NVIDIA Blackwell NVLink bug](https://docs.nvidia.com/dgx/dgxb300-fw-update-guide/version-26-03-1.html#gpu-tray-fixes).
 
 ---
 
@@ -24,10 +24,10 @@ kubectl get secret crusoe-secrets -n crusoe-system -o yaml \
 helm install crusoe-node-remediation ./helm/crusoe-node-remediation \
   --namespace crusoe-node-remediation
 
-# 3. Watch the logs
-kubectl logs -n crusoe-node-remediation -f deployment/crusoe-node-remediation
+# 4. Watch the logs
+kubectl logs -n crusoe-node-remediation -f job/$(kubectl get jobs -n crusoe-node-remediation --sort-by=.metadata.creationTimestamp -o name | tail -1)
 
-# 4. When ready, switch to live mode
+# 5. When ready, switch to live mode
 helm upgrade crusoe-node-remediation ./helm/crusoe-node-remediation \
   --namespace crusoe-node-remediation \
   --set dryRun=false
@@ -59,8 +59,11 @@ This tool runs as a CronJob and performs the following on each scheduled run:
 
 ### Node Lifecycle
 
-The remediation controller uses a two-phase threshold approach. The defaults below
-target the B200 60-day NVLink firmware bug — adjust thresholds for your workload.
+The remediation controller uses a two-phase threshold approach. By default,
+cordon and remediation thresholds are equal (55d) so action is taken back-to-back
+— the node is cordoned and immediately drained + remediated in the same run.
+Set a lower `cordonThreshold` if you prefer a buffer window where nodes are
+cordoned but not yet drained, allowing workloads to naturally rotate off.
 
 ```mermaid
 flowchart LR
@@ -69,27 +72,17 @@ flowchart LR
         N2[no taints]
     end
 
-    subgraph Cordoned[Cordoned]
-        C1[mark unschedulable]
-        C2[taint: scheduled]
-        C3[existing pods stay]
-    end
-
     subgraph Remediating[Remediating]
         direction TB
+        C[Cordon: mark unschedulable]
         D[Draining: evict pods]
-        D2[taint: draining]
         F[Force-Draining: ignore PDBs]
-        F2[taint: draining]
         A[Action-Running: vm-reset]
-        A2[taint: maintenance]
         U[Uncordoning: remove taints]
-        U2[removing: maintenance + scheduled]
-        D --> F --> A --> U
+        C --> D --> F --> A --> U
     end
 
-    Normal -->|cordonThreshold 55d| Cordoned
-    Cordoned -->|remediationThreshold 60d| Remediating
+    Normal -->|cordonThreshold 55d| Remediating
     Remediating -->|complete| Normal
     Remediating -.->|7d cooldown| Normal
 ```
@@ -98,14 +91,16 @@ flowchart LR
 |-------|-------|---------|--------|-------|------|
 | **monitored** | `crusoe.ai/remediation.phase=monitored` | discovered, below threshold | — | none | schedule normally |
 | **cordoned** | `crusoe.ai/remediation.phase=cordoned` | uptime ≥ cordonThreshold (55d) | mark unschedulable | `crusoe.ai/remediation.scheduled:NoSchedule` | existing stay, no new |
-| **draining** | `crusoe.ai/remediation.phase=draining` | uptime ≥ remediationThreshold (60d) | evict all pods | `crusoe.ai/remediation.draining:NoSchedule` | evicted gracefully |
+| **draining** | `crusoe.ai/remediation.phase=draining` | uptime ≥ remediationThreshold (55d) | evict all pods | `crusoe.ai/remediation.draining:NoSchedule` | evicted gracefully |
 | **force-draining** | `crusoe.ai/remediation.phase=force-draining` | drain blocked + `forceAfterEvictionFailure: true` | force evict (ignore PDBs) | `crusoe.ai/remediation.draining:NoSchedule` | force-evicted |
 | **action-running** | `crusoe.ai/remediation.phase=action-running` | drain complete | vm-reset (reboot VM) | `crusoe.ai/remediation.maintenance:NoSchedule` | VM rebooting |
 | **uncordoning** | `crusoe.ai/remediation.phase=uncordoning` | action + boot verified | remove taints, mark schedulable | removing: `maintenance` + `scheduled` | schedule normally |
 
-> **Note:** Thresholds are examples for the B200 NVLink bug. Your mileage may vary —
-> tune `cordonThreshold`, `remediationThreshold`, and `remediationCooldown` for your
-> cluster's workload and hardware.
+> **Note:** Thresholds are examples for the NVIDIA Blackwell NVLink bug. Your mileage
+> may vary — tune `cordonThreshold`, `remediationThreshold`, and `remediationCooldown`
+> for your cluster's workload and hardware. When `cordonThreshold` ==
+> `remediationThreshold`, cordon and drain happen back-to-back. Set a lower
+> `cordonThreshold` to create a buffer window for gradual workload rotation.
 
 ---
 
@@ -163,7 +158,7 @@ kubectl create secret docker-registry crusoe-registry-pull \
 ```yaml
 image:
   repository: registry.YOUR-LOCATION.ccr.crusoecloudcompute.com/crusoe-node-remediation.YOUR-PROJECT-ID/crusoe-node-remediation
-  tag: v0.0.11
+  tag: v0.0.23
   pullPolicy: IfNotPresent
 
 imagePullSecret: crusoe-registry-pull
@@ -175,9 +170,11 @@ nodeSelector:
 
 instanceTypeFilter: "b200.*"
 
-# B200 60-day NVLink bug thresholds
+# NVIDIA Blackwell NVLink bug thresholds
+# Equal thresholds = cordon + drain back-to-back.
+# Set a lower cordonThreshold for a buffer window.
 cordonThreshold: 55d
-remediationThreshold: 60d
+remediationThreshold: 55d
 remediationCooldown: 7d
 
 action:
@@ -185,7 +182,7 @@ action:
   timeout: 30m
   maxRetries: 5
 
-drainTimeout: 10m
+drainTimeout: 120m
 forceAfterEvictionFailure: false
 
 # Built-in secret (default for CMK)
@@ -212,7 +209,7 @@ kubectl logs -n crusoe-node-remediation -f job/$(kubectl get jobs -n crusoe-node
 
 You'll see output like:
 ```
-config: thresholds=(cordon=55d, remediation=60d, cooldown=7d), action=(type=vm-reset, dryRun=true), guardrails=(global=1, perPool=1), drain=(timeout=10m, force=false)
+config: thresholds=(cordon=55d, remediation=55d, cooldown=7d), action=(type=vm-reset, dryRun=true), guardrails=(global=1, perPool=1), drain=(timeout=120m, force=false)
 cluster: 458 nodes (450 ready, 3 notReady, 0 remediating)
 discovered 12 nodepools, 200 targeted nodes
 targeting: crusoe.ai/project.id=YOUR-PROJECT-ID, beta.kubernetes.io/instance-type=~b200.*
@@ -292,13 +289,13 @@ See [docs/configuration.md](docs/configuration.md) for the full reference.
 |--------|---------|-------------|
 | `dryRun` | `true` | Log only, don't touch nodes |
 | `cordonThreshold` | `55d` | Uptime at which to cordon |
-| `remediationThreshold` | `60d` | Uptime at which to remediate |
+| `remediationThreshold` | `55d` | Uptime at which to remediate |
 | `remediationCooldown` | `7d` | Skip nodes remediated within this period |
 | `action.type` | `vm-reset` | Remediation action (`vm-reset`, `vm-stop`, `vm-start`, `vm-delete`, `noop`) |
 | `action.maxRetries` | `5` | Max attempts before leaving cordoned for manual intervention |
 | `guardrails.globalMaxCordoned` | `1` | Max nodes being remediated cluster-wide |
 | `guardrails.perPoolMaxCordoned` | `1` | Max nodes being remediated per nodepool |
-| `drainTimeout` | `10m` | Graceful drain timeout |
+| `drainTimeout` | `120m` | Graceful drain timeout |
 | `forceAfterEvictionFailure` | `false` | Bypass PDBs and delete emptyDir data if [eviction](https://kubernetes.io/docs/concepts/scheduling-eviction/api-eviction/) fails |
 | `schedule` | `0 0 * * *` | Cron schedule (daily at midnight) |
 | `instanceTypeFilter` | `b200.*` | Regex filter for `beta.kubernetes.io/instance-type` label |
@@ -389,6 +386,65 @@ guardrail config: globalMax=5, globalMaxPercent=10% (→3 of 30), perPoolMax=2
 # Latest job logs
 kubectl logs -n crusoe-node-remediation -f job/$(kubectl get jobs -n crusoe-node-remediation --sort-by=.metadata.creationTimestamp -o name | tail -1)
 ```
+
+### Remediation Reports
+
+When `remediationReport: true` (default), the CronJob writes a `RemediationReport`
+custom resource per nodepool after each run, giving you a quick `kubectl`-native
+status overview without parsing logs.
+
+```bash
+# List all nodepool reports
+kubectl get remediationreport -n crusoe-node-remediation
+
+# Watch reports update in real time
+kubectl get remediationreport -n crusoe-node-remediation -w
+
+# Full detail for a specific nodepool
+kubectl get remediationreport -n crusoe-node-remediation NODEPOOL_ID -o yaml
+```
+
+Example output:
+
+```
+NAME        LAST RUN              STATUS     TOTAL  READY  REMEDIATING  PENDING  COOLDOWN  MONITORED
+0fe3d21c    2026-08-20T00:05:00Z  succeeded  8      7      1            0        2         4
+a1b2c3d4    2026-08-20T00:05:00Z  succeeded  4      4      0            0        0         4
+```
+
+| Column | Description |
+|--------|-------------|
+| **Last Run** | Timestamp of the most recent CronJob run |
+| **Status** | `succeeded` or `failed` |
+| **Total** | Total nodes in the nodepool |
+| **Ready** | Nodes in `Ready` condition |
+| **Remediating** | Nodes in an active remediation phase (cordoned, draining, action-running, etc.) |
+| **Pending** | Nodes cordoned and waiting for `remediationThreshold` |
+| **Cooldown** | Nodes recently remediated, in cooldown |
+| **Monitored** | Healthy managed nodes below cordon threshold |
+
+> **Note:** The CRD is deployed automatically when `remediationReport: true`. Set
+> `remediationReport: false` in your Helm values to skip CRD creation and report writing.
+
+#### How Reports Update
+
+Reports are written **progressively** during each run, not just at the end:
+
+1. **Start of run** — all pool CRs are created/updated with `status=running` and zeroed counts
+2. **After each nodepool** — that pool's CR is updated with real counts (nodes evaluated, guardrails checked, actions taken)
+3. **End of run** — all CRs updated with final `status=succeeded` or `status=failed`
+
+This means `kubectl get remediationreport -w` shows pools updating one at a time as the run progresses.
+
+#### Serial Processing
+
+Remediation runs **serially** — one nodepool at a time, and within each pool, one node at a time. With the default guardrail (`globalMaxCordoned: 1`), only a single node is remediated cluster-wide at any moment. The full cycle for each node is:
+
+```
+cordon → drain → VM action → wait for Ready → uncordon
+```
+
+Only after one node completes does the next begin. This is by design — it minimizes workload disruption. The trade-off is that large clusters take longer: with 10 nodes to remediate and a 15m drain + 30m action per node, a single run can take 7+ hours. See [Tuning the Schedule](#tuning-the-schedule) for guidance on matching your cron interval to your drain + action times.
 
 ### K8s Events
 
@@ -512,8 +568,8 @@ make build
 make test
 
 # Build and push Docker image
-make docker-build IMAGE_TAG=v0.0.11
-make docker-push IMAGE_TAG=v0.0.11
+make docker-build IMAGE_TAG=v0.0.23
+make docker-push IMAGE_TAG=v0.0.23
 
 # Validate config
 ./crusoe-node-remediation --validate
@@ -594,28 +650,10 @@ After successful remediation, the `crusoe.ai/remediation.action-completed-at` an
 
 The CronJob pod has tolerations for remediation taints and `node.kubernetes.io/unschedulable`, so it can still schedule on cordoned nodes. It also has required affinity to avoid nodes being actively remediated.
 
-### Notifications
+---
 
-> **TODO:** Notifications are not yet implemented. The `slackWebhookUrl` value exists in `values.yaml` but is currently a no-op. Planned support:
-> - Slack notifications for `NodeCordoned`, `NodeRemediated`, `MaxRetriesExceeded` events
-> - Configurable severity thresholds (e.g., only alert on failures, not successful remediations)
-> - Message content per notification:
->   - Node name and nodepool
->   - Uptime before action (e.g., `60d12h`)
->   - Action taken (e.g., `vm-reset`)
->   - Duration of full cycle (cordon → drain → reset → uncordon)
->   - Boot ID change (old → new, confirms reboot happened)
->   - Success or failure status
->   - Attempt number (e.g., `attempt 1/5`)
->   - Guardrail context (e.g., `2/4 global, 2/2 pool`)
-> - Example message:
->   ```
->   ✅ Node Remediated
->   Node: np-your-node-1.us-southcentral1-a.compute.internal
->   Nodepool: your-nodepool
->   Action: vm-reset (attempt 1/5)
->   Uptime before: 60d12h
->   Duration: 1m15s
->   Boot ID: 4ece6878… → 1ca589d8…
->   Guardrails: 2/4 global, 2/2 pool
->   ```
+## Disclaimer
+
+This solution is provided **AS IS, WITHOUT WARRANTY OF ANY KIND**, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose, and noninfringement. The CronJob, Go source code, Helm chart, scripts, and documentation in this directory are reference implementations intended to help you get started — they are not a supported Crusoe product and may not be appropriate for every deployment without customization. This tool performs automated node cordon, drain, and VM reset actions that can disrupt running workloads; carefully review the configuration and test in `dryRun` mode before applying it to production clusters. Use at your own risk.
+
+Customers are encouraged to **fork this repository** and adapt the solution to their specific operational requirements, workload characteristics, and cluster configurations. Crusoe does not assume liability for data loss, workload disruption, or other damages arising from the use of this software.

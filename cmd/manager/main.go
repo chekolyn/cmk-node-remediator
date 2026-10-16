@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -24,7 +25,10 @@ import (
 	"crusoe-node-remediation/internal/discovery"
 	"crusoe-node-remediation/internal/guardrails"
 	"crusoe-node-remediation/internal/k8s"
+	"crusoe-node-remediation/internal/logging"
 	"crusoe-node-remediation/internal/remediation"
+
+	"k8s.io/client-go/dynamic"
 )
 
 func resolveProjectID(envValue, configValue string) string {
@@ -105,6 +109,15 @@ func resolveCredentials(env func(string) string, configProjectID string) (Crusoe
 func main() {
 	log.SetFlags(log.LstdFlags | log.LUTC)
 
+	// Dual logging: write to both stdout (kubectl logs) and journald
+	// (Crusoe Managed Logs console). Journald is only enabled when the
+	// JOURNALD_LOGGING env var is set to "true" and the socket is
+	// available; otherwise stdout-only (no behaviour change).
+	if os.Getenv("JOURNALD_LOGGING") == "true" {
+		jw := logging.NewJournalWriter("crusoe-node-remediation")
+		log.SetOutput(io.MultiWriter(os.Stdout, jw))
+	}
+
 	// --validate: load and validate config, then exit (for e2e/CI)
 	validateOnly := flag.Bool("validate", false, "validate config and exit")
 	// --verify-api: verify Crusoe API access and exit
@@ -153,12 +166,18 @@ func main() {
 	}
 
 	// 3. Create K8s client
-	k8sClientset, _, err := createK8sClient()
+	k8sClientset, restConfig, err := createK8sClient()
 	if err != nil {
 		log.Fatalf("failed to create K8s client: %v", err)
 	}
 
 	k8sClient := k8s.NewClient(k8sClientset, nil)
+
+	// 3a. Create dynamic client for CRD operations
+	dynamicClient, err := dynamic.NewForConfig(restConfig)
+	if err != nil {
+		log.Fatalf("failed to create dynamic client: %v", err)
+	}
 
 	// 4. Create Crusoe API client (HMAC auth with access/secret key pair)
 	crusoeClient := crusoe.NewClient(creds.APIURL, creds.AccessKey, creds.SecretKey, creds.ProjectID)
@@ -200,6 +219,9 @@ func main() {
 		namespace: eventNamespace,
 	}
 
+	// 9a. Create ReportWriter for progressive CRD updates
+	reportWriter := remediation.NewReportWriter(dynamicClient, eventNamespace)
+
 	// 10. Create uptime evaluator (uses K8s client for stats summary)
 	uptimeEval := &k8sUptimeEvaluator{k8sClient: k8sClient}
 
@@ -213,6 +235,7 @@ func main() {
 		Discoverer:   discoverer,
 		Config:       cfg,
 		Recorder:     recorder,
+		ReportWriter: reportWriter,
 	}
 
 	mgr := remediation.NewManager(deps)
@@ -221,7 +244,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
 	defer cancel()
 
-	if err := mgr.Run(ctx); err != nil {
+	if _, err := mgr.Run(ctx); err != nil {
 		log.Printf("remediation run failed: %v", err)
 		os.Exit(1)
 	}

@@ -67,11 +67,12 @@ func TestIntegrationFullRemediationWorkflow(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
 
-	err := mgr.Run(context.Background())
+	_, err := mgr.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run failed: %v", err)
 	}
@@ -132,10 +133,11 @@ func TestIntegrationDryRunNoChanges(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	err := mgr.Run(context.Background())
+	_, err := mgr.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run failed: %v", err)
 	}
@@ -198,10 +200,11 @@ func TestIntegrationRemediationCooldownSkipsRemediation(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	err := mgr.Run(context.Background())
+	_, err := mgr.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run failed: %v", err)
 	}

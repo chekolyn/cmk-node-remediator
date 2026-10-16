@@ -76,6 +76,25 @@ func detailError(err error) string {
 	return err.Error()
 }
 
+// IsNotFoundError returns true if the error is a 404/not-found from the Crusoe API.
+// Uses errors.As to unwrap wrapped errors, then checks both the error message
+// and response body for 404 or "not found" indicators.
+func IsNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var se swaggerError
+	if !errors.As(err, &se) {
+		return false
+	}
+	errStr := strings.ToLower(se.Error())
+	bodyStr := strings.ToLower(string(se.Body()))
+	return strings.Contains(errStr, "404") ||
+		strings.Contains(errStr, "not found") ||
+		strings.Contains(bodyStr, "404") ||
+		strings.Contains(bodyStr, "not found")
+}
+
 // VerifyAccess tests that the Crusoe API credentials are valid by calling
 // the /users/identities endpoint (same as `crusoe whoami`). This is a
 // lightweight call that doesn't require a project ID.
@@ -96,7 +115,7 @@ func (c *Client) VerifyAccess(ctx context.Context) error {
 func (c *Client) GetVMState(ctx context.Context, instanceID string) (string, error) {
 	vm, _, err := c.vmsAPI.GetInstance(ctx, c.projectID, instanceID)
 	if err != nil {
-		return "", fmt.Errorf("Crusoe API GetInstance failed for VM %s: %s", instanceID, detailError(err))
+		return "", fmt.Errorf("Crusoe API GetInstance failed for VM %s: %w", instanceID, err)
 	}
 	return vm.State, nil
 }

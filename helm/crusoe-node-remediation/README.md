@@ -1,8 +1,8 @@
 # Node Remediation Helm Chart
 
 Automatically cordons, drains, and takes configurable remediation actions
-(vm-reset, vm-stop, vm-start, vm-delete) on B200 GPU nodes approaching the
-NVIDIA 60-day NVLink firmware bug threshold.
+(vm-reset, vm-stop, vm-start, vm-delete) on nodes approaching critical
+uptime thresholds.
 
 ## Quick Start
 

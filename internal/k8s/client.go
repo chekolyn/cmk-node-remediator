@@ -14,6 +14,19 @@ import (
 	"k8s.io/client-go/util/retry"
 )
 
+// metadataPatch builds a JSON merge patch for node metadata (labels or annotations).
+// Uses json.Marshal to safely escape keys and values.
+func metadataPatch(kind, key, value string) ([]byte, error) {
+	patch := map[string]map[string]map[string]string{
+		"metadata": {
+			kind: {
+				key: value,
+			},
+		},
+	}
+	return json.Marshal(patch)
+}
+
 // Client wraps the Kubernetes clientset for node operations.
 type Client struct {
 	clientset kubernetes.Interface
@@ -76,14 +89,28 @@ func (c *Client) Uncordon(ctx context.Context, nodeName string) error {
 }
 
 func (c *Client) SetLabel(ctx context.Context, nodeName, key, value string) error {
-	patch := fmt.Sprintf(`{"metadata":{"labels":{"%s":"%s"}}}`, key, value)
-	_, err := c.clientset.CoreV1().Nodes().Patch(ctx, nodeName, types.MergePatchType, []byte(patch), metav1.PatchOptions{})
+	patch := map[string]interface{}{
+		"metadata": map[string]interface{}{
+			"labels": map[string]string{
+				key: value,
+			},
+		},
+	}
+	patchBytes, _ := json.Marshal(patch)
+	_, err := c.clientset.CoreV1().Nodes().Patch(ctx, nodeName, types.MergePatchType, patchBytes, metav1.PatchOptions{})
 	return err
 }
 
 func (c *Client) SetAnnotation(ctx context.Context, nodeName, key, value string) error {
-	patch := fmt.Sprintf(`{"metadata":{"annotations":{"%s":"%s"}}}`, key, value)
-	_, err := c.clientset.CoreV1().Nodes().Patch(ctx, nodeName, types.MergePatchType, []byte(patch), metav1.PatchOptions{})
+	patch := map[string]interface{}{
+		"metadata": map[string]interface{}{
+			"annotations": map[string]string{
+				key: value,
+			},
+		},
+	}
+	patchBytes, _ := json.Marshal(patch)
+	_, err := c.clientset.CoreV1().Nodes().Patch(ctx, nodeName, types.MergePatchType, patchBytes, metav1.PatchOptions{})
 	return err
 }
 

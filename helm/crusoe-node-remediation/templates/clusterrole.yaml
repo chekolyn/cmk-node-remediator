@@ -26,3 +26,6 @@ rules:
   - apiGroups: [""]
     resources: ["events"]
     verbs: ["create", "patch"]
+  - apiGroups: ["remediation.crusoe.ai"]
+    resources: ["remediationreports"]
+    verbs: ["get", "list", "create", "update", "patch"]

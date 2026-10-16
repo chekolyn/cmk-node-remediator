@@ -81,6 +81,7 @@ type Dependencies struct {
 	Discoverer   *discovery.Discoverer
 	Config       *config.Config
 	Recorder     record.EventRecorder
+	ReportWriter *ReportWriter // nil-safe — Run() checks for nil before calling WriteReport
 }
 
 // Manager orchestrates the node remediation.
@@ -93,17 +94,51 @@ func NewManager(deps Dependencies) *Manager {
 }
 
 // Run executes one full remediation pass.
-func (m *Manager) Run(ctx context.Context) error {
+func (m *Manager) Run(ctx context.Context) (RunResult, error) {
 	log.Println("starting remediation run")
+
+	result := RunResult{
+		LastRunTime:   time.Now().UTC(),
+		LastRunStatus: "running",
+		Config: ConfigSnapshot{
+			CordonThreshold:      formatUptime(time.Duration(m.deps.Config.CordonThreshold)),
+			RemediationThreshold: formatUptime(time.Duration(m.deps.Config.RemediationThreshold)),
+			RemediationCooldown:  formatUptime(time.Duration(m.deps.Config.RemediationCooldown)),
+			ActionType:           m.deps.Config.Action.Type,
+			DryRun:               m.deps.Config.DryRun,
+			GuardrailsGlobalMax:  m.deps.Config.Guardrails.GlobalMaxCordoned,
+			GuardrailsPerPoolMax: m.deps.Config.Guardrails.PerPoolMaxCordoned,
+		},
+	}
+
+	// Write initial "running" status to CRs (progressive update #1)
+	if m.deps.ReportWriter != nil {
+		if err := m.deps.ReportWriter.WriteReport(ctx, result); err != nil {
+			log.Printf("warning: failed to write initial remediation report: %v", err)
+		}
+	}
 
 	groups, err := m.deps.Discoverer.Discover(ctx)
 	if err != nil {
-		return fmt.Errorf("node discovery failed: %w", err)
+		result.LastRunStatus = "failed"
+		if m.deps.ReportWriter != nil {
+			if err := m.deps.ReportWriter.WriteReport(ctx, result); err != nil {
+				log.Printf("warning: failed to write remediation report: %v", err)
+			}
+		}
+		return result, fmt.Errorf("node discovery failed: %w", err)
 	}
 
 	if len(groups) == 0 {
 		log.Println("no target nodes found")
-		return nil
+		result.LastRunStatus = "succeeded"
+		// Write final status even for empty runs
+		if m.deps.ReportWriter != nil {
+			if err := m.deps.ReportWriter.WriteReport(ctx, result); err != nil {
+				log.Printf("warning: failed to write remediation report: %v", err)
+			}
+		}
+		return result, nil
 	}
 
 	// Count total nodes in cluster (for guardrail calculations)
@@ -170,7 +205,8 @@ func (m *Manager) Run(ctx context.Context) error {
 		selfNode := os.Getenv("NODE_NAME")
 		selfNodeSkipped := false
 
-		// Query uptime for all nodes in this pool before processing
+		// Evaluate all nodes in this pool using evaluateNode()
+		var nodeStatuses []NodeStatus
 		type nodeWithUptime struct {
 			info   discovery.NodeInfo
 			uptime time.Duration
@@ -179,29 +215,25 @@ func (m *Manager) Run(ctx context.Context) error {
 		var remediationCooldownCount, failedUptimeCount int
 
 		for _, nodeInfo := range group.Nodes {
-			// Skip the node this pod is running on — never drain yourself
-			if selfNode != "" && nodeInfo.Name == selfNode {
-				log.Printf("skipping node %s: running this pod, excluded from remediation", nodeInfo.Name)
-				selfNodeSkipped = true
-				continue
-			}
-			startTime, err := m.deps.UptimeEval.GetNodeStartTime(ctx, nodeInfo.Name)
-			if err != nil {
-				log.Printf("skipping node %s: failed to get uptime: %v", nodeInfo.Name, err)
-				failedUptimeCount++
-				continue
-			}
+			status := m.evaluateNode(ctx, nodeInfo, selfNode)
+			nodeStatuses = append(nodeStatuses, status)
 
-			uptime := time.Since(startTime)
-
-			// Check remediationCooldown — skip if remediated recently
-			if m.isInRemediationCooldown(nodeInfo.Node) {
-				log.Printf("skipping node %s: in remediationCooldown (remediated within %s)", nodeInfo.Name, formatUptime(time.Duration(m.deps.Config.RemediationCooldown)))
-				remediationCooldownCount++
+			if status.Excluded {
+				switch status.ExcludeReason {
+				case ExcludeSelfNode:
+					log.Printf("skipping node %s: running this pod, excluded from remediation", nodeInfo.Name)
+					selfNodeSkipped = true
+				case ExcludeUndetermined:
+					log.Printf("skipping node %s: failed to get uptime", nodeInfo.Name)
+					failedUptimeCount++
+				case ExcludeCooldown:
+					log.Printf("skipping node %s: in remediationCooldown (remediated within %s)", nodeInfo.Name, formatUptime(time.Duration(m.deps.Config.RemediationCooldown)))
+					remediationCooldownCount++
+				}
 				continue
 			}
 
-			nodesWithUptime = append(nodesWithUptime, nodeWithUptime{info: nodeInfo, uptime: uptime})
+			nodesWithUptime = append(nodesWithUptime, nodeWithUptime{info: nodeInfo, uptime: status.Uptime})
 		}
 
 		// Sort nodes by configured prioritizer (default: highest uptime first)
@@ -233,6 +265,7 @@ func (m *Manager) Run(ctx context.Context) error {
 		}
 		log.Printf("pool %s: %d nodes (%d ready, %d remediating / %d max, cooldown=%d, unreachable=%d, excluded=%s)",
 			shortPoolID(group.NodepoolID), poolTotal, poolReady, poolRemediating, poolMax, remediationCooldownCount, failedUptimeCount, excludedNode)
+		// Note: failedUptimeCount is the count of undetermined nodes (failed uptime query)
 
 		// Build a lookup from sorted names back to original nodeWithUptime
 		lookup := make(map[string]nodeWithUptime, len(nodesWithUptime))
@@ -256,6 +289,17 @@ func (m *Manager) Run(ctx context.Context) error {
 				}
 			}
 		}
+
+		// Aggregate pool report and write progressive update
+		poolReport := aggregatePoolStatus(shortPoolID(group.NodepoolID), poolTotal, nodeStatuses)
+		result.PoolReports = append(result.PoolReports, poolReport)
+
+		// Progressive update: write CR after each pool is processed
+		if m.deps.ReportWriter != nil {
+			if err := m.deps.ReportWriter.WriteReport(ctx, result); err != nil {
+				log.Printf("warning: failed to write progressive remediation report: %v", err)
+			}
+		}
 	}
 
 	log.Println("remediation run complete")
@@ -274,11 +318,41 @@ func (m *Manager) Run(ctx context.Context) error {
 			len(cordonedPending), formatUptime(time.Duration(m.deps.Config.RemediationThreshold)), strings.Join(cordonedPending, ", "))
 	}
 
+	result.ClusterTotal = globalTotal
 	if failedCount > 0 {
-		return fmt.Errorf("%d nodes failed remediation: %s", failedCount, strings.Join(failedNodes, "; "))
+		result.LastRunStatus = "failed"
+		result.Failures = buildFailures(failedNodes)
+		// Write final failed status to CRs
+		if m.deps.ReportWriter != nil {
+			if err := m.deps.ReportWriter.WriteReport(ctx, result); err != nil {
+				log.Printf("warning: failed to write final remediation report: %v", err)
+			}
+		}
+		return result, fmt.Errorf("%d nodes failed remediation: %s", failedCount, strings.Join(failedNodes, "; "))
 	}
+	result.LastRunStatus = "succeeded"
+	// Write final succeeded status to CRs
+	if m.deps.ReportWriter != nil {
+		if err := m.deps.ReportWriter.WriteReport(ctx, result); err != nil {
+			log.Printf("warning: failed to write final remediation report: %v", err)
+		}
+	}
+	return result, nil
+}
 
-	return nil
+// buildFailures converts a list of "node: error" strings into NodeFailure structs.
+func buildFailures(failedNodes []string) []NodeFailure {
+	var failures []NodeFailure
+	for _, f := range failedNodes {
+		parts := strings.SplitN(f, ": ", 2)
+		node := parts[0]
+		errMsg := ""
+		if len(parts) > 1 {
+			errMsg = parts[1]
+		}
+		failures = append(failures, NodeFailure{Node: node, Error: errMsg})
+	}
+	return failures
 }
 
 func (m *Manager) isInRemediationCooldown(node *corev1.Node) bool {
@@ -379,9 +453,13 @@ func (m *Manager) handleCordonNode(ctx context.Context, nodeInfo discovery.NodeI
 			nodeInfo.Name, formatUptime(uptime), formatUptime(time.Duration(m.deps.Config.RemediationThreshold)), formatUptime(remaining))
 	}
 
-	// Only increment for newly cordoned nodes
-	*globalActive++
-	*poolActive++
+	// Only increment for newly cordoned nodes. If the node was already in
+	// PhaseCordoned (cordoned by us in a previous run), it already holds a
+	// guardrail slot from countActiveNodesInPool — don't double-count.
+	if nodeInfo.Node.Labels[constants.LabelRemediationPhase] != string(constants.PhaseCordoned) {
+		*globalActive++
+		*poolActive++
+	}
 }
 
 func (m *Manager) handleRemediateNode(ctx context.Context, nodeInfo discovery.NodeInfo, uptime time.Duration, globalActive, poolActive *int, globalTotal, poolTotal int) error {
@@ -440,6 +518,7 @@ func (m *Manager) handleRemediateNode(ctx context.Context, nodeInfo discovery.No
 	// 1. Cordon — skip if already cordoned (idempotent: verify actual state)
 	alreadyCordoned := k8s.IsCordoned(nodeInfo.Node)
 	if !alreadyCordoned {
+		log.Printf("node %s: phase=cordon starting", nodeInfo.Name)
 		if err := m.deps.K8sClient.Cordon(ctx, nodeInfo.Name); err != nil {
 			log.Printf("ERROR: failed to cordon node %s: %v", nodeInfo.Name, err)
 			return err
@@ -447,8 +526,10 @@ func (m *Manager) handleRemediateNode(ctx context.Context, nodeInfo discovery.No
 		m.deps.K8sClient.SetLabel(ctx, nodeInfo.Name, constants.LabelRemediationPhase, string(constants.PhaseCordoned))
 		m.deps.K8sClient.AddTaint(ctx, nodeInfo.Name, constants.TaintScheduled)
 		m.deps.K8sClient.SetAnnotation(ctx, nodeInfo.Name, constants.AnnotationCordonedAt, time.Now().UTC().Format(time.RFC3339))
+		m.deps.Recorder.Eventf(nodeInfo.Node, corev1.EventTypeNormal, "NodeCordoned", "node cordoned for remediation")
+		log.Printf("node %s: phase=cordon done", nodeInfo.Name)
 	} else {
-		log.Printf("node %s already cordoned, skipping cordon", nodeInfo.Name)
+		log.Printf("node %s: phase=cordon skipped (already cordoned)", nodeInfo.Name)
 	}
 
 	// Increment guardrail counters — this node is now being remediated.
@@ -461,17 +542,20 @@ func (m *Manager) handleRemediateNode(ctx context.Context, nodeInfo discovery.No
 
 	// 2. Drain — always call. Drain is idempotent: if pods are already
 	// evicted (from a previous run), it succeeds immediately.
+	log.Printf("node %s: phase=drain starting (timeout=%s)", nodeInfo.Name, formatUptime(time.Duration(m.deps.Config.DrainTimeout)))
 	m.deps.K8sClient.SetLabel(ctx, nodeInfo.Name, constants.LabelRemediationPhase, string(constants.PhaseDraining))
 	m.deps.K8sClient.AddTaint(ctx, nodeInfo.Name, constants.TaintDraining)
 	m.deps.K8sClient.RemoveTaint(ctx, nodeInfo.Name, constants.TaintScheduled)
 	m.deps.K8sClient.SetAnnotation(ctx, nodeInfo.Name, constants.AnnotationDrainStartedAt, time.Now().UTC().Format(time.RFC3339))
 
+	drainStart := time.Now()
 	drainErr := m.deps.DrainMgr.Drain(ctx, nodeInfo.Name)
+	drainElapsed := time.Since(drainStart).Round(time.Second)
 	if drainErr != nil {
-		log.Printf("drain blocked for node %s: %v", nodeInfo.Name, drainErr)
+		log.Printf("node %s: phase=drain blocked after %s: %v", nodeInfo.Name, drainElapsed, drainErr)
 		m.deps.Recorder.Eventf(nodeInfo.Node, corev1.EventTypeWarning, "DrainBlocked", "drain blocked: %v", drainErr)
 		if m.deps.Config.ForceAfterEvictionFailure {
-			log.Printf("force draining node %s", nodeInfo.Name)
+			log.Printf("node %s: phase=force-drain starting", nodeInfo.Name)
 			m.deps.K8sClient.SetLabel(ctx, nodeInfo.Name, constants.LabelRemediationPhase, string(constants.PhaseForceDraining))
 			m.deps.K8sClient.SetAnnotation(ctx, nodeInfo.Name, constants.AnnotationForceDrainStartedAt, time.Now().UTC().Format(time.RFC3339))
 			if err := m.deps.DrainMgr.ForceAfterEvictionFailure(ctx, nodeInfo.Name); err != nil {
@@ -479,13 +563,19 @@ func (m *Manager) handleRemediateNode(ctx context.Context, nodeInfo discovery.No
 				m.deps.Recorder.Eventf(nodeInfo.Node, corev1.EventTypeWarning, "ForceDrainFailed", "force drain failed: %v", err)
 				return err
 			}
+			m.deps.Recorder.Eventf(nodeInfo.Node, corev1.EventTypeNormal, "NodeDrained", "node force-drained after graceful drain blocked")
+			log.Printf("node %s: phase=force-drain done", nodeInfo.Name)
 		} else {
-			log.Printf("skipping node %s: drain blocked and force drain disabled", nodeInfo.Name)
+			log.Printf("node %s: phase=drain skipped (blocked, force disabled)", nodeInfo.Name)
 			return drainErr
 		}
+	} else {
+		m.deps.Recorder.Eventf(nodeInfo.Node, corev1.EventTypeNormal, "NodeDrained", "node drained in %s", drainElapsed)
+		log.Printf("node %s: phase=drain done in %s", nodeInfo.Name, drainElapsed)
 	}
 
 	// 3. Execute remediation step(s)
+	log.Printf("node %s: phase=action starting (type=%s)", nodeInfo.Name, m.deps.Config.Action.Type)
 	m.deps.K8sClient.SetLabel(ctx, nodeInfo.Name, constants.LabelRemediationPhase, string(constants.PhaseActionRunning))
 	m.deps.K8sClient.AddTaint(ctx, nodeInfo.Name, constants.TaintMaintenance)
 	m.deps.K8sClient.RemoveTaint(ctx, nodeInfo.Name, constants.TaintDraining)
@@ -505,13 +595,15 @@ func (m *Manager) handleRemediateNode(ctx context.Context, nodeInfo discovery.No
 		InstanceID: nodeInfo.InstanceID,
 	}
 
+	actionStart := time.Now()
 	if err := step.Run(ctx, actNode, m.deps.Config.Action.Params); err != nil {
-		log.Printf("ERROR: step %s failed for node %s: %v", step.Type(), nodeInfo.Name, err)
+		log.Printf("node %s: phase=action failed after %s: step %s: %v", nodeInfo.Name, time.Since(actionStart).Round(time.Second), step.Type(), err)
 		m.deps.Recorder.Eventf(nodeInfo.Node, corev1.EventTypeWarning, "StepFailed",
 			"step %s failed (attempt %d): %v", step.Type(), attempt+1, err)
 		// Leave node cordoned + tainted, next CronJob run will retry
 		return err
 	}
+	log.Printf("node %s: phase=action done in %s (step=%s)", nodeInfo.Name, time.Since(actionStart).Round(time.Second), step.Type())
 
 	// 4. Uncordon (skip for vm-delete — old node is gone)
 	// Determine if the last action is vm-delete (single or multi-step)
@@ -524,8 +616,9 @@ func (m *Manager) handleRemediateNode(ctx context.Context, nodeInfo discovery.No
 	}
 
 	if isDeleteAction {
-		log.Printf("node %s: vm-delete completed, old node will be replaced by CMK", nodeInfo.Name)
+		log.Printf("node %s: phase=uncordon skipped (vm-delete, node replaced by CMK)", nodeInfo.Name)
 	} else {
+		log.Printf("node %s: phase=uncordon starting", nodeInfo.Name)
 		if err := m.uncordonNode(ctx, nodeInfo, step.Type(), uptime); err != nil {
 			// Uncordon failed — don't set action-completed-at, so remediationCooldown
 			// won't skip this node on the next run
@@ -554,7 +647,7 @@ func (m *Manager) uncordonNode(ctx context.Context, nodeInfo discovery.NodeInfo,
 
 	m.deps.Recorder.Eventf(nodeInfo.Node, corev1.EventTypeNormal, "NodeRemediated",
 		"node remediated with %s after %s uptime", stepType, formatUptime(uptime))
-	log.Printf("node %s remediation complete (step: %s)", nodeInfo.Name, stepType)
+	log.Printf("node %s: phase=uncordon done — remediation complete (step=%s)", nodeInfo.Name, stepType)
 	return nil
 }
 

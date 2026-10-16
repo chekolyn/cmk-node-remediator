@@ -11,6 +11,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	dynfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/record"
 
@@ -65,10 +67,11 @@ func TestRunDryRunNoChanges(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	err := mgr.Run(context.Background())
+	_, err := mgr.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run failed: %v", err)
 	}
@@ -121,10 +124,11 @@ func TestRunCordonsNodeAt55Days(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	err := mgr.Run(context.Background())
+	_, err := mgr.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run failed: %v", err)
 	}
@@ -209,10 +213,11 @@ func TestGuardrailExceededSkipsCordon(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	err := mgr.Run(context.Background())
+	_, err := mgr.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run failed: %v", err)
 	}
@@ -311,10 +316,11 @@ func TestForceDrainPath(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	err := mgr.Run(context.Background())
+	_, err := mgr.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run failed: %v", err)
 	}
@@ -377,10 +383,11 @@ func TestForceDrainDisabledLeavesNodeCordoned(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	err := mgr.Run(context.Background())
+	_, err := mgr.Run(context.Background())
 	// Should fail because drain failed and force drain is disabled
 	if err == nil {
 		t.Fatal("Run should fail when drain fails and forceAfterEvictionFailure is false")
@@ -447,10 +454,11 @@ func TestAttemptAnnotationResetAfterSuccess(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	err := mgr.Run(context.Background())
+	_, err := mgr.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run failed: %v", err)
 	}
@@ -515,10 +523,11 @@ func TestUncordonFailureDoesNotSetCompletedAt(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	err := mgr.Run(context.Background())
+	_, err := mgr.Run(context.Background())
 	// Should return error because step failed
 	if err == nil {
 		t.Fatal("Run should return error when step fails")
@@ -595,10 +604,11 @@ func TestRemediationCooldownBoundaryNotSkipped(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	err := mgr.Run(context.Background())
+	_, err := mgr.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run failed: %v", err)
 	}
@@ -663,10 +673,11 @@ func TestMaxRetriesExceededLeavesCordoned(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	err := mgr.Run(context.Background())
+	_, err := mgr.Run(context.Background())
 	// Should return error because max retries exceeded
 	if err == nil {
 		t.Fatal("Run should return error when max retries exceeded")
@@ -727,10 +738,11 @@ func TestVMDeleteDoesNotUncordon(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	err := mgr.Run(context.Background())
+	_, err := mgr.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run failed: %v", err)
 	}
@@ -806,10 +818,11 @@ func TestNodeWithNoInstanceIDLabelSkipped(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	err := mgr.Run(context.Background())
+	_, err := mgr.Run(context.Background())
 	// Should NOT fail — node without instance.id should be skipped
 	if err != nil {
 		t.Fatalf("Run should not fail when node has no instance.id: %v", err)
@@ -885,10 +898,11 @@ func TestGetNodeStartTimeFailsSkipsNode(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	err := mgr.Run(context.Background())
+	_, err := mgr.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run should not fail when GetNodeStartTime fails for one node: %v", err)
 	}
@@ -983,10 +997,11 @@ func TestHandleMonitoredNodeOnlyUncordonsManagedNodes(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	err := mgr.Run(context.Background())
+	_, err := mgr.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run failed: %v", err)
 	}
@@ -1089,10 +1104,11 @@ func TestMultiplePoolsPerPoolGuardrailIndependent(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	err := mgr.Run(context.Background())
+	_, err := mgr.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run failed: %v", err)
 	}
@@ -1212,10 +1228,11 @@ func TestHighestUptimePriorityCordonsHighestFirst(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	err := mgr.Run(context.Background())
+	_, err := mgr.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run failed: %v", err)
 	}
@@ -1336,10 +1353,11 @@ func TestHighestUptimePriorityMultiplePools(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	err := mgr.Run(context.Background())
+	_, err := mgr.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run failed: %v", err)
 	}
@@ -1437,10 +1455,11 @@ func TestHighestUptimePriorityGlobalGuardrailAcrossPools(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	err := mgr.Run(context.Background())
+	_, err := mgr.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run failed: %v", err)
 	}
@@ -1514,10 +1533,11 @@ func TestMaxRetriesErrorIncludesRetryCount(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	err := mgr.Run(context.Background())
+	_, err := mgr.Run(context.Background())
 	if err == nil {
 		t.Fatal("Run should return error when max retries exceeded")
 	}
@@ -1571,10 +1591,11 @@ func TestForceDrainDisabledErrorMentionsForceDrain(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	err := mgr.Run(context.Background())
+	_, err := mgr.Run(context.Background())
 	if err == nil {
 		t.Fatal("Run should fail when drain fails and forceAfterEvictionFailure is false")
 	}
@@ -1628,10 +1649,11 @@ func TestForceDrainFailedErrorMentionsForceDrain(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	err := mgr.Run(context.Background())
+	_, err := mgr.Run(context.Background())
 	if err == nil {
 		t.Fatal("Run should fail when force drain fails")
 	}
@@ -1689,10 +1711,11 @@ func TestEventsEmittedForMaxRetries(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     recorder,
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	_ = mgr.Run(context.Background())
+	_, _ = mgr.Run(context.Background())
 
 	// Check that a MaxRetriesExceeded event was emitted
 	found := false
@@ -1757,10 +1780,11 @@ func TestEventsEmittedForForceDrainFailure(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     recorder,
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	_ = mgr.Run(context.Background())
+	_, _ = mgr.Run(context.Background())
 
 	// Check that ForceDrainFailed event was emitted
 	found := false
@@ -1879,10 +1903,11 @@ func TestGuardrailPreventsCordoningMoreThanMaxAcrossRuns(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	_ = mgr.Run(context.Background())
+	_, _ = mgr.Run(context.Background())
 
 	// Nodes 1 and 2 were already draining — they should still be draining
 	// Nodes 3, 4, 5 should NOT have been cordoned (guardrail: 2 already active, pool max=2)
@@ -1957,10 +1982,11 @@ func TestGuardrailPercentPreventsCordoningMoreThanMax(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	_ = mgr.Run(context.Background())
+	_, _ = mgr.Run(context.Background())
 
 	// 20% of 10 = 2 max per pool. 2 already draining. No new nodes should be cordoned.
 	for i := 3; i <= 10; i++ {
@@ -2021,10 +2047,11 @@ func TestGuardrailCounterIncrementsWithinRun(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	_ = mgr.Run(context.Background())
+	_, _ = mgr.Run(context.Background())
 
 	// Count how many nodes were cordoned (unschedulable=true)
 	cordonedCount := 0
@@ -2091,10 +2118,11 @@ func TestGuardrailGlobalLimitBlocksAcrossPools(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	_ = mgr.Run(context.Background())
+	_, _ = mgr.Run(context.Background())
 
 	// Count cordoned nodes per pool
 	poolACordoned := 0
@@ -2168,10 +2196,11 @@ func TestGuardrailSuccessfulRemediationDoesNotBlockNextNode(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	_ = mgr.Run(context.Background())
+	_, _ = mgr.Run(context.Background())
 
 	// Count how many nodes were remediated (phase=monitored + managed=true)
 	remediatedCount := 0
@@ -2245,10 +2274,11 @@ func TestGuardrailPercentGlobalLimitBlocksAcrossPools(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	_ = mgr.Run(context.Background())
+	_, _ = mgr.Run(context.Background())
 
 	// 20% of 10 = 2 global max. Only 2 nodes should be cordoned total.
 	totalCordoned := 0
@@ -2324,10 +2354,11 @@ func TestGuardrailMixedAbsoluteAndPercent(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	_ = mgr.Run(context.Background())
+	_, _ = mgr.Run(context.Background())
 
 	// min(5, 20% of 10=2) = 2 global max. Only 2 should be cordoned.
 	cordonedCount := 0
@@ -2395,10 +2426,11 @@ func TestSelfNodeExclusion(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	_ = mgr.Run(context.Background())
+	_, _ = mgr.Run(context.Background())
 
 	// node-2 should NOT be cordoned (it's the self-node)
 	node2, _ := clientset.CoreV1().Nodes().Get(context.Background(), "node-2", metav1.GetOptions{})
@@ -2477,10 +2509,11 @@ func TestSelfNodeExclusionWithEnvNotSet(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	_ = mgr.Run(context.Background())
+	_, _ = mgr.Run(context.Background())
 
 	// All 3 nodes should be remediated (no exclusion)
 	if drainMgr.drainCount != 3 {
@@ -2546,10 +2579,11 @@ func TestStuckNodeRetriedDespiteGuardrailFull(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	err := mgr.Run(context.Background())
+	_, err := mgr.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run failed: %v", err)
 	}
@@ -2632,10 +2666,11 @@ func TestSkipsNodeCordonedByEngineer(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	err := mgr.Run(context.Background())
+	_, err := mgr.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run failed: %v", err)
 	}
@@ -2705,10 +2740,11 @@ func TestSkipsEngineerCordonedNodeAtCordonThreshold(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	err := mgr.Run(context.Background())
+	_, err := mgr.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run failed: %v", err)
 	}
@@ -2797,10 +2833,11 @@ func TestNodePriorityInvalidFallsBack(t *testing.T) {
 		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
 		Config:       cfg,
 		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
 	}
 
 	mgr := NewManager(deps)
-	err := mgr.Run(context.Background())
+	_, err := mgr.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run failed: %v", err)
 	}
@@ -2815,5 +2852,273 @@ func TestNodePriorityInvalidFallsBack(t *testing.T) {
 	nodeLow, _ := clientset.CoreV1().Nodes().Get(context.Background(), "node-low", metav1.GetOptions{})
 	if nodeLow.Spec.Unschedulable {
 		t.Error("node-low should NOT be cordoned — guardrail exceeded (node-high took the slot via fallback)")
+	}
+}
+
+// TestAlreadyCordonedNodeDoesNotDoubleCountGuardrail verifies that a node
+// cordoned by us in a previous run (managed=true, phase=cordoned) does NOT
+// consume an additional guardrail slot when re-processed in the cordon window.
+//
+// Scenario: perPoolMaxCordoned=2. node-a was cordoned by us in a previous run
+// (still in cordon window). node-b and node-c are new nodes also in the cordon
+// window. countActiveNodesInPool counts node-a as 1 active. handleCordonNode
+// re-processes node-a and increments the counter again (double-count), making
+// poolActive=2. Then node-b passes the guardrail (2 < 2 is false — blocked!).
+// Wait — 2 >= 2, so node-b is blocked. But node-b SHOULD be cordoned because
+// node-a only holds 1 slot, not 2.
+//
+// With the fix: node-a is already cordoned, so no increment. poolActive stays
+// at 1. node-b passes guardrail (1 < 2), gets cordoned, poolActive becomes 2.
+// node-c is blocked (2 >= 2). Correct behavior: node-a and node-b cordoned.
+func TestAlreadyCordonedNodeDoesNotDoubleCountGuardrail(t *testing.T) {
+	clientset := fake.NewSimpleClientset(
+		// Node cordoned by us in a previous run — still in cordon window
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-a",
+				Labels: map[string]string{
+					constants.LabelNodepoolID:         "pool-a",
+					constants.LabelInstanceID:         "vm-a",
+					constants.LabelProjectID:          "proj-1",
+					constants.LabelInstanceType:       "b200-180gb-sxm-ib.8x",
+					constants.LabelRemediationManaged: "true",
+					constants.LabelRemediationPhase:   string(constants.PhaseCordoned),
+				},
+			},
+			Spec: corev1.NodeSpec{Unschedulable: true},
+		},
+		// New node that should be cordoned (pool max=2, only 1 slot used)
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-b",
+				Labels: map[string]string{
+					constants.LabelNodepoolID:   "pool-a",
+					constants.LabelInstanceID:   "vm-b",
+					constants.LabelProjectID:    "proj-1",
+					constants.LabelInstanceType: "b200-180gb-sxm-ib.8x",
+				},
+			},
+			Spec: corev1.NodeSpec{Unschedulable: false},
+		},
+		// New node that should be blocked (pool max=2, both slots used)
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-c",
+				Labels: map[string]string{
+					constants.LabelNodepoolID:   "pool-a",
+					constants.LabelInstanceID:   "vm-c",
+					constants.LabelProjectID:    "proj-1",
+					constants.LabelInstanceType: "b200-180gb-sxm-ib.8x",
+				},
+			},
+			Spec: corev1.NodeSpec{Unschedulable: false},
+		},
+	)
+
+	k8sClient := k8s.NewClient(clientset, nil)
+	cfg := &config.Config{
+		CordonThreshold:           config.Duration(55 * 24 * time.Hour),
+		RemediationThreshold:      config.Duration(60 * 24 * time.Hour),
+		RemediationCooldown:       config.Duration(7 * 24 * time.Hour),
+		DryRun:                    false,
+		InstanceTypeFilter:        "b200.*",
+		Action:                    config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:                config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+		DrainTimeout:              1 * time.Second,
+		ForceAfterEvictionFailure: true,
+		CrusoeAPISecret:           "test-secret",
+		CrusoeProjectID:           "proj-1",
+		NodeSelector:              config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+	}
+
+	drainMgr := &mockDrainMgr{}
+	stepFactory := &mockStepCreator{step: &actions.NoopStep{}}
+
+	// Use per-node uptimes so sort order is deterministic:
+	// node-b (57d) sorts before node-c (56d). node-a (56d) is already cordoned.
+	multiUptime := &mockUptimeEvaluatorMulti{startTimes: map[string]time.Time{
+		"node-a": time.Now().AddDate(0, 0, -56),
+		"node-b": time.Now().AddDate(0, 0, -57),
+		"node-c": time.Now().AddDate(0, 0, -56),
+	}}
+
+	deps := Dependencies{
+		K8sClient:    k8sClient,
+		DrainMgr:     drainMgr,
+		StepFactory:  stepFactory,
+		UptimeEval:   multiUptime,
+		GuardChecker: guardrails.NewChecker(cfg.Guardrails),
+		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
+		Config:       cfg,
+		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil,
+	}
+
+	mgr := NewManager(deps)
+	_, err := mgr.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	// node-a should still be cordoned (idempotent re-cordon)
+	nodeA, _ := clientset.CoreV1().Nodes().Get(context.Background(), "node-a", metav1.GetOptions{})
+	if !nodeA.Spec.Unschedulable {
+		t.Error("node-a should still be cordoned")
+	}
+
+	// node-b SHOULD be cordoned — pool max=2, node-a holds 1 slot, node-b takes the 2nd.
+	// If double-counting occurs, node-a consumes 2 slots and node-b is incorrectly blocked.
+	nodeB, _ := clientset.CoreV1().Nodes().Get(context.Background(), "node-b", metav1.GetOptions{})
+	if !nodeB.Spec.Unschedulable {
+		t.Error("node-b should be cordoned — pool guardrail (max=2) has room (node-a holds 1 slot)")
+	}
+
+	// node-c should NOT be cordoned — both pool slots are now used
+	nodeC, _ := clientset.CoreV1().Nodes().Get(context.Background(), "node-c", metav1.GetOptions{})
+	if nodeC.Spec.Unschedulable {
+		t.Error("node-c should NOT be cordoned — pool guardrail (max=2) is full")
+	}
+}
+
+func TestRun_ReturnsRunResultWithPoolReport(t *testing.T) {
+	clientset := fake.NewSimpleClientset(
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-1",
+				Labels: map[string]string{
+					constants.LabelNodepoolID:   "pool-a",
+					constants.LabelInstanceID:   "vm-001",
+					constants.LabelProjectID:    "proj-1",
+					constants.LabelInstanceType: "b200-180gb-sxm-ib.8x",
+				},
+			},
+			Spec: corev1.NodeSpec{Unschedulable: false},
+		},
+	)
+
+	k8sClient := k8s.NewClient(clientset, nil)
+	cfg := &config.Config{
+		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
+		RemediationThreshold: config.Duration(60 * 24 * time.Hour),
+		DryRun:               true,
+		InstanceTypeFilter:   "b200.*",
+		Action:               config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:           config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+		DrainTimeout:         10 * time.Minute,
+		CrusoeProjectID:      "proj-1",
+		NodeSelector:         config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+	}
+
+	crusoeClient := crusoe.NewClient("http://localhost", "test-access", "test-secret", "proj-1")
+	deps := Dependencies{
+		K8sClient:    k8sClient,
+		DrainMgr:     k8s.NewDrainManager(k8sClient, clientset, cfg.DrainTimeout, true),
+		StepFactory:  actions.NewFactory(k8sClient, crusoeClient),
+		UptimeEval:   &mockUptimeEvaluator{startTime: time.Now().AddDate(0, 0, -30)},
+		GuardChecker: guardrails.NewChecker(cfg.Guardrails),
+		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
+		Config:       cfg,
+		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: nil, // nil-safe — Run() skips CR writes when ReportWriter is nil
+	}
+
+	mgr := NewManager(deps)
+	result, err := mgr.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	if result.LastRunStatus != "succeeded" {
+		t.Errorf("LastRunStatus = %q, want succeeded", result.LastRunStatus)
+	}
+	if len(result.PoolReports) != 1 {
+		t.Fatalf("expected 1 pool report, got %d", len(result.PoolReports))
+	}
+	if result.PoolReports[0].TotalNodes != 1 {
+		t.Errorf("TotalNodes = %d, want 1", result.PoolReports[0].TotalNodes)
+	}
+	if result.PoolReports[0].MonitoredNodes != 0 {
+		t.Errorf("MonitoredNodes = %d, want 0 (node has no managed label — never been cordoned)", result.PoolReports[0].MonitoredNodes)
+	}
+	if result.PoolReports[0].UnmanagedNodes != 1 {
+		t.Errorf("UnmanagedNodes = %d, want 1 (node has no managed label)", result.PoolReports[0].UnmanagedNodes)
+	}
+	if result.Config.ActionType != "noop" {
+		t.Errorf("Config.ActionType = %q, want noop", result.Config.ActionType)
+	}
+}
+
+func TestRun_WritesProgressiveCRDUpdates(t *testing.T) {
+	clientset := fake.NewSimpleClientset(
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-1",
+				Labels: map[string]string{
+					constants.LabelNodepoolID:   "pool-a",
+					constants.LabelInstanceID:   "vm-001",
+					constants.LabelProjectID:    "proj-1",
+					constants.LabelInstanceType: "b200-180gb-sxm-ib.8x",
+				},
+			},
+			Spec: corev1.NodeSpec{Unschedulable: false},
+		},
+	)
+
+	k8sClient := k8s.NewClient(clientset, nil)
+	cfg := &config.Config{
+		CordonThreshold:      config.Duration(55 * 24 * time.Hour),
+		RemediationThreshold: config.Duration(60 * 24 * time.Hour),
+		DryRun:               true,
+		InstanceTypeFilter:   "b200.*",
+		Action:               config.ActionConfig{Type: "noop", Timeout: 5 * time.Second, MaxRetries: 3},
+		Guardrails:           config.GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+		DrainTimeout:         10 * time.Minute,
+		CrusoeProjectID:      "proj-1",
+		NodeSelector:         config.NodeSelectorConfig{MatchLabels: map[string]string{constants.LabelProjectID: "proj-1"}},
+	}
+
+	// Use a fake dynamic client to capture CR writes
+	gvr := schema.GroupVersionResource{
+		Group:    "remediation.crusoe.ai",
+		Version:  "v1alpha1",
+		Resource: "remediationreports",
+	}
+	scheme := runtime.NewScheme()
+	gvrToListKind := map[schema.GroupVersionResource]string{
+		gvr: "RemediationReportList",
+	}
+	dynClient := dynfake.NewSimpleDynamicClientWithCustomListKinds(scheme, gvrToListKind)
+	reportWriter := NewReportWriter(dynClient, "crusoe-node-remediation")
+
+	crusoeClient := crusoe.NewClient("http://localhost", "test-access", "test-secret", "proj-1")
+	deps := Dependencies{
+		K8sClient:    k8sClient,
+		DrainMgr:     k8s.NewDrainManager(k8sClient, clientset, cfg.DrainTimeout, true),
+		StepFactory:  actions.NewFactory(k8sClient, crusoeClient),
+		UptimeEval:   &mockUptimeEvaluator{startTime: time.Now().AddDate(0, 0, -30)},
+		GuardChecker: guardrails.NewChecker(cfg.Guardrails),
+		Discoverer:   discovery.NewDiscoverer(k8sClient, cfg),
+		Config:       cfg,
+		Recorder:     record.NewFakeRecorder(20),
+		ReportWriter: reportWriter,
+	}
+
+	mgr := NewManager(deps)
+	_, err := mgr.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	// Verify CR was created with final "succeeded" status
+	cr, err := dynClient.Resource(gvr).Namespace("crusoe-node-remediation").Get(
+		context.Background(), "np-pool-a", metav1.GetOptions{},
+	)
+	if err != nil {
+		t.Fatalf("expected CR to exist: %v", err)
+	}
+
+	status := cr.Object["status"].(map[string]interface{})
+	if status["lastRunStatus"] != "succeeded" {
+		t.Errorf("lastRunStatus = %v, want succeeded (final update)", status["lastRunStatus"])
 	}
 }

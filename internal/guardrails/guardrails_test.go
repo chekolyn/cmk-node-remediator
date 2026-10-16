@@ -46,7 +46,7 @@ func TestCanCordonGlobalPercentWithDifferentTotals(t *testing.T) {
 	}
 	checker := NewChecker(cfg)
 
-	// 458 global total (like a large customer), 50 pool total
+	// 458 global total (large fleet), 50 pool total
 	// 10% of 458 = 45.8 → ceil → 46 global max; 5 pool max
 	if !checker.CanCordon(45, 4, 458, 50) {
 		t.Error("CanCordon(45, 4, 458, 50) = false, want true")

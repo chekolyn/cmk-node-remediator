@@ -53,5 +53,5 @@ data:
     nodeSelector:
       matchLabels:
         {{- range $key, $val := .Values.nodeSelector.matchLabels }}
-        {{ $key }}: "{{ $val }}"
+        "{{ $key }}": "{{ $val }}"
         {{- end }}

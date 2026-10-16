@@ -19,7 +19,7 @@ action:
 guardrails:
   globalMaxCordoned: 5
   perPoolMaxCordoned: 2
-drainTimeout: 10m
+drainTimeout: 120m
 forceAfterEvictionFailure: true
 crusoeApiSecret: crusoe-api-credentials
 crusoeProjectId: test-project-id
@@ -55,8 +55,8 @@ nodeSelector:
 	if cfg.Guardrails.GlobalMaxCordoned != 5 {
 		t.Errorf("GlobalMaxCordoned = %d, want 5", cfg.Guardrails.GlobalMaxCordoned)
 	}
-	if cfg.DrainTimeout != 10*time.Minute {
-		t.Errorf("DrainTimeout = %v, want 10m", cfg.DrainTimeout)
+	if cfg.DrainTimeout != 120*time.Minute {
+		t.Errorf("DrainTimeout = %v, want 120m", cfg.DrainTimeout)
 	}
 	if !cfg.ForceAfterEvictionFailure {
 		t.Errorf("ForceAfterEvictionFailure = false, want true")
@@ -187,8 +187,8 @@ func TestLoadConfigDefaults(t *testing.T) {
 	if cfg.CordonThreshold != Duration(55*24*time.Hour) {
 		t.Errorf("default CordonThreshold = %v, want 55d", cfg.CordonThreshold)
 	}
-	if cfg.RemediationThreshold != Duration(60*24*time.Hour) {
-		t.Errorf("default RemediationThreshold = %v, want 60d", cfg.RemediationThreshold)
+	if cfg.RemediationThreshold != Duration(55*24*time.Hour) {
+		t.Errorf("default RemediationThreshold = %v, want 55d", cfg.RemediationThreshold)
 	}
 	if cfg.RemediationCooldown != Duration(7*24*time.Hour) {
 		t.Errorf("default RemediationCooldown = %v, want 7d", cfg.RemediationCooldown)
@@ -244,7 +244,7 @@ func TestValidateConfig(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "cordon >= action",
+			name: "cordon > action rejected",
 			cfg: Config{
 				CordonThreshold: Duration(60 * 24 * time.Hour), RemediationThreshold: Duration(55 * 24 * time.Hour), RemediationCooldown: Duration(7 * 24 * time.Hour),
 				Action:          ActionConfig{Type: "vm-reset", Timeout: 30 * time.Minute, MaxRetries: 3},
@@ -253,6 +253,17 @@ func TestValidateConfig(t *testing.T) {
 				CrusoeAPISecret: "secret", CrusoeProjectID: "proj-1",
 			},
 			wantErr: true,
+		},
+		{
+			name: "equal cordon and remediation thresholds — cordon, drain, and remediate in one pass",
+			cfg: Config{
+				CordonThreshold: Duration(55 * 24 * time.Hour), RemediationThreshold: Duration(55 * 24 * time.Hour), RemediationCooldown: Duration(7 * 24 * time.Hour),
+				Action:          ActionConfig{Type: "vm-reset", Timeout: 30 * time.Minute, MaxRetries: 3},
+				Guardrails:      GuardrailsConfig{GlobalMaxCordoned: 5, PerPoolMaxCordoned: 2},
+				DrainTimeout:    10 * time.Minute,
+				CrusoeAPISecret: "secret", CrusoeProjectID: "proj-1",
+			},
+			wantErr: false,
 		},
 		{
 			name: "both type and steps",

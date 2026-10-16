@@ -34,7 +34,7 @@ helm install crusoe-node-remediation ./helm/crusoe-node-remediation \
   --namespace crusoe-node-remediation \
   -f e2e/example-values.yaml
 
-# Production (real cluster, 55d/60d thresholds, vm-reset)
+# Production (real cluster, 55d/55d thresholds, vm-reset)
 helm install crusoe-node-remediation ./helm/crusoe-node-remediation \
   --namespace crusoe-node-remediation \
   -f my-production-values.yaml
@@ -46,7 +46,7 @@ helm install crusoe-node-remediation ./helm/crusoe-node-remediation \
 |------|-----------|---------|
 | `e2e/example-values.yaml` | ✅ Yes | Template with test defaults (noop, 30m/1h, dry-run) |
 | `e2e/values.yaml` | ❌ No (gitignored) | Your cluster details — copy from template |
-| `e2e/run-e2e.sh` | ✅ Yes | Test script — 9 phases, all idempotent |
+| `e2e/run-e2e.sh` | ✅ Yes | Test script — 10 phases, all idempotent |
 
 ## Setup
 
@@ -61,7 +61,7 @@ Edit `e2e/values.yaml`:
 ```yaml
 image:
   repository: registry.your-location.ccr.crusoecloudcompute.com/crusoe-node-remediation.your-project-id
-  tag: v0.0.1
+  tag: v0.0.23
 
 nodeSelector:
   matchLabels:
@@ -81,6 +81,7 @@ crusoeProjectId: "your-project-id"
 | verify-pdb | `bash e2e/run-e2e.sh verify-pdb` | Verify drain respects PDBs | ✅ (read-only) |
 | dry-run-off | `bash e2e/run-e2e.sh dry-run-off` | Upgrade to dryRun=false (noop) | ✅ |
 | vm-reset | `bash e2e/run-e2e.sh vm-reset` | Real VM reset (interactive confirm) | ✅ |
+| empirical | `bash e2e/run-e2e.sh empirical [N]` | Run N passes of vm-reset with timing data (default 5) | ✅ |
 | cleanup | `bash e2e/run-e2e.sh cleanup` | Uninstall + uncordon + remove test workloads | ✅ |
 | all | `bash e2e/run-e2e.sh all` | build + deploy + verify | ✅ |
 

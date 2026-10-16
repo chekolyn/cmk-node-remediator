@@ -74,20 +74,26 @@ func (v *BootVerifier) VerifyBoot(ctx context.Context, nodeName, oldBootID strin
 }
 
 // VerifyBootAndReady polls until bootID changes AND node is Ready.
-// Convenience method for steps that need both.
+// Uses a single shared deadline so total wait never exceeds the configured timeout.
 func (v *BootVerifier) VerifyBootAndReady(ctx context.Context, nodeName, oldBootID string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+
 	// First: wait for bootID to change (boot happened)
-	if _, err := v.VerifyBoot(ctx, nodeName, oldBootID, timeout); err != nil {
+	if _, err := v.verifyBootWithDeadline(ctx, nodeName, oldBootID, deadline); err != nil {
 		return err
 	}
 
-	// Second: wait for node Ready (boot completed)
+	// Second: wait for node Ready (boot completed) — uses remaining time
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		return fmt.Errorf("node %s did not become Ready within %v", nodeName, timeout)
+	}
+
 	log.Printf("boot verifier: waiting for node %s to become Ready", nodeName)
-	deadline := time.Now().Add(timeout)
 	pollInterval := 30 * time.Second
 	// Use shorter poll interval if timeout is short (for testing)
-	if timeout < pollInterval {
-		pollInterval = timeout / 3
+	if remaining < pollInterval {
+		pollInterval = remaining / 3
 		if pollInterval < 100*time.Millisecond {
 			pollInterval = 100 * time.Millisecond
 		}
@@ -115,4 +121,39 @@ func (v *BootVerifier) VerifyBootAndReady(ctx context.Context, nodeName, oldBoot
 	}
 
 	return fmt.Errorf("node %s did not become Ready within %v", nodeName, timeout)
+}
+
+// verifyBootWithDeadline is like VerifyBoot but uses an explicit deadline
+// instead of computing one from a timeout. This allows VerifyBootAndReady
+// to share a single deadline across both phases.
+func (v *BootVerifier) verifyBootWithDeadline(ctx context.Context, nodeName, oldBootID string, deadline time.Time) (string, error) {
+	log.Printf("boot verifier: waiting for bootID change on node %s (old=%s, deadline=%s)", nodeName, oldBootID, deadline.Format(time.RFC3339))
+	pollInterval := 10 * time.Second
+
+	for time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		default:
+		}
+
+		node, err := v.k8sClient.GetNode(ctx, nodeName)
+		if err != nil {
+			// Node might be temporarily unreachable during reboot
+			log.Printf("boot verifier: failed to get node %s: %v", nodeName, err)
+			sleepOrCancel(ctx, pollInterval)
+			continue
+		}
+
+		newBootID := node.Status.NodeInfo.BootID
+		if newBootID != "" && newBootID != oldBootID {
+			log.Printf("boot verifier: bootID changed on node %s (old=%s, new=%s)", nodeName, oldBootID, newBootID)
+			return newBootID, nil
+		}
+
+		log.Printf("boot verifier: node %s bootID unchanged (current=%s), polling...", nodeName, newBootID)
+		sleepOrCancel(ctx, pollInterval)
+	}
+
+	return "", fmt.Errorf("node %s bootID did not change before deadline", nodeName)
 }

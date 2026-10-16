@@ -1,13 +1,13 @@
 # E2E Test Values — Template
 #
-# Copy this file to e2e/local-values.yaml and fill in your cluster details:
-#   cp e2e/values.yaml e2e/local-values.yaml
+# Copy this file to e2e/values.yaml and fill in your cluster details:
+#   cp e2e/example-values.yaml e2e/values.yaml
 #
-# Then run: bash e2e/run-e2e.sh all --api-key YOUR_KEY
+# Then run: bash e2e/run-e2e.sh all --values e2e/values.yaml
 
 image:
   repository: ""  # Set: registry.your-location.ccr.crusoecloudcompute.com/crusoe-node-remediation.your-project-id
-  tag: v0.0.1
+  tag: v0.0.23
   pullPolicy: IfNotPresent
 
 # Every 5 minutes for fast testing
@@ -22,6 +22,8 @@ nodeSelector:
 instanceTypeFilter: "c1a.*"
 
 # Fast thresholds for testing (minutes, not days)
+# Equal thresholds = cordon + drain back-to-back.
+# Set a lower cordonThreshold for a buffer window.
 cordonThreshold: 30m
 remediationThreshold: 1h
 remediationCooldown: 15m
